@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="SqlDialectMappings">
+    <file url="file://$PROJECT_DIR$/Betfair/Data/CompetitionDb.cs" dialect="SQLite" />
+    <file url="file://$PROJECT_DIR$/Betfair/Data/EventDb.cs" dialect="SQLite" />
+    <file url="file://$PROJECT_DIR$/Betfair/Data/ListMarketCatalogueDb.cs" dialect="SQLite" />
+    <file url="file://$PROJECT_DIR$/Betfair/Data/MarketBookDb.cs" dialect="SQLite" />
+    <file url="file://$PROJECT_DIR$/Betfair/Data/MarketProfitAndLossDb.cs" dialect="SQLite" />
+    <file url="file://$PROJECT_DIR$/Betfair/Services/DatabaseService.cs" dialect="SQLite" />
+  </component>
+</project>
