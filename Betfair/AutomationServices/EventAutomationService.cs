@@ -47,9 +47,9 @@ public class EventAutomationService
             Console.WriteLine("Failed to deserialize event types.");
         }
     }
-    public async Task FetchAndStoreListOfEventsAsync(List<string> eventId)
+    public async Task<List<EventListResult>> FetchAndStoreListOfEventsAsync(List<string> eventIds)
     {
-        var eventListJson = await _eventService.ListEvents(eventId);
+        var eventListJson = await _eventService.ListEvents(eventIds);
         var eventListApiResponse = JsonSerializer.Deserialize<ApiResponse<EventListResult>>(eventListJson);
 
         if (eventListApiResponse?.Result != null)
@@ -77,10 +77,14 @@ public class EventAutomationService
             {
                 Console.WriteLine("No events to insert.");
             }
+
+            return eventList;
         }
         else
         {
             Console.WriteLine("Failed to deserialize event list.");
+            return new List<EventListResult>();
         }
     }
+
 }

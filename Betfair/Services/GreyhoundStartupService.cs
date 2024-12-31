@@ -1,6 +1,7 @@
 using Betfair.AutomationServices;
 using Betfair.Data;
 using Betfair.Handlers;
+using Betfair.Models.Event;
 using Betfair.Services.Account;
 
 namespace Betfair.Services;
@@ -28,9 +29,10 @@ public class GreyhoundStartupService : BackgroundService
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            await _eventAutomationService.FetchAndStoreListOfEventsAsync(new List<string> {"4339"});
-
-            var marketCatalogues = await _greyhoundAutomationService.ProcessGreyhoundMarketCataloguesAsync("33895720");
+            var eventList = await _eventAutomationService.FetchAndStoreListOfEventsAsync(new List<string> {"4339"});
+            var eventString = ConvertEventListToStrings(eventList);
+            Console.WriteLine(eventString.First());
+            var marketCatalogues = await _greyhoundAutomationService.ProcessGreyhoundMarketCataloguesAsync(eventString.First());
 
             var marketIds = marketCatalogues
                 .Select(market => market.MarketId)  
@@ -54,5 +56,12 @@ public class GreyhoundStartupService : BackgroundService
             await Task.Delay(TimeSpan.FromSeconds(120), stoppingToken);
         }
     }
+    
+    public List<string> ConvertEventListToStrings(List<EventListResult> eventList)
+    {
+        //return eventList.Select(e => $"{e.Event.Name} ({e.Event.Id})").ToList();
+        return eventList.Select(e => $"{e.Event.Id}").ToList();
+    }
+
 }
 
