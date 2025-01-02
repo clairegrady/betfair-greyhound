@@ -3,6 +3,7 @@ using Betfair.Services;
 using Betfair.AutomationServices;
 using Betfair.Handlers;
 using Betfair.Services.Account;
+using Betfair.Services.HistoricalData;
 using Betfair.Settings;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -62,12 +63,21 @@ builder.Services.AddHttpClient<AccountService>((sp, client) =>
     return BetfairHttpClientFactory.CreateBetfairHandler(sp);
 });
 
+builder.Services.AddHttpClient<HistoricalDataService>((sp, client) =>
+{
+    BetfairHttpClientFactory.ConfigureBetfairClient(client, sp);
+}).ConfigurePrimaryHttpMessageHandler(sp =>
+{
+    return BetfairHttpClientFactory.CreateBetfairHandler(sp);
+});
+
 // Register database services with the connection string
 builder.Services.AddSingleton(new CompetitionDb(connectionString));
 builder.Services.AddSingleton(new ListMarketCatalogueDb(connectionString));
 builder.Services.AddSingleton(new MarketBookDb(connectionString));
 builder.Services.AddSingleton(new EventDb(connectionString));
 builder.Services.AddSingleton(new MarketProfitAndLossDb(connectionString));
+builder.Services.AddSingleton(new HistoricalDataDb(connectionString));
 
 // Register scoped services
 builder.Services.AddScoped<CompetitionAutomationService>();
@@ -76,8 +86,7 @@ builder.Services.AddScoped<EventAutomationService>();
 builder.Services.AddScoped<GreyhoundAutomationService>();
 
 // Register hosted services
-builder.Services.AddHostedService<BetfairAutomationService>();
-
+//builder.Services.AddHostedService<BetfairAutomationService>();
 builder.Services.AddHostedService<GreyhoundStartupService>();
 
 builder.Services.AddScoped<DatabaseService>(provider => new DatabaseService(connectionString));

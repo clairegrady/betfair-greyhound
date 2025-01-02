@@ -2,6 +2,19 @@ using Microsoft.Data.Sqlite;
 using Betfair.Models.Market;
 
 namespace Betfair.Data;
+
+public class MarketInfo
+{
+    public string MarketName { get; set; }
+    public string EventName { get; set; }
+    
+    public void Deconstruct(out string marketName, out string eventName)
+    {
+        marketName = MarketName;
+        eventName = EventName;
+    }
+}
+
 public class MarketBookDb
 {
     private readonly string _connectionString;
@@ -87,78 +100,120 @@ public class MarketBookDb
     }
     
     public async Task InsertGreyhoundMarketBooksIntoDatabase(List<MarketBook> marketBooks)
+{
+    using var connection = new SqliteConnection(_connectionString);
+    await connection.OpenAsync();
+
+    using var transaction = await connection.BeginTransactionAsync();
+
+    foreach (var marketBook in marketBooks)
     {
-        using var connection = new SqliteConnection(_connectionString);
-        await connection.OpenAsync();
+        var marketId = marketBook.MarketId;
 
-        using var transaction = await connection.BeginTransactionAsync();
+        // Ensure correct calling of the helper method
+        var marketList = await GetMarketNameAndEventNameByMarketId(connection, marketId);
+        Console.WriteLine($"Market Name: {marketList.MarketName}, Event Name: {marketList.EventName}");
+        
+        // Optional: Log the MarketName for debugging purposes
+        Console.WriteLine($"Market Id: {marketId}   Market Name: {marketList.MarketName}");
 
-        foreach (var marketBook in marketBooks)
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+            INSERT INTO GreyhoundMarketBook 
+            (MarketId, MarketName, SelectionId, Status, PriceType, Price, Size) 
+            VALUES 
+            ($MarketId, $MarketName, $SelectionId, $Status, $PriceType, $Price, $Size)";
+
+        foreach (var runner in marketBook.Runners)
         {
-            using var command = connection.CreateCommand();
-            command.CommandText = @"
-                INSERT INTO GreyhoundMarketBook 
-                (MarketId, SelectionId, Status, PriceType, Price, Size) 
-                VALUES 
-                ($MarketId, $SelectionId, $Status, $PriceType, $Price, $Size)";
+            var selectionId = runner.SelectionId;
+            var status = runner.Status;
+            Console.WriteLine($"Market Id: {marketId}    Runner Id: {selectionId}    Status: {status}");
 
-            foreach (var runner in marketBook.Runners)
+            // Insert basic market and runner information
+            command.Parameters.Clear();
+            command.Parameters.AddWithValue("$MarketId", marketId);
+            command.Parameters.AddWithValue("$MarketName", marketList.MarketName);  // Insert the Market Name
+            command.Parameters.AddWithValue("$SelectionId", selectionId);
+            command.Parameters.AddWithValue("$Status", status);
+
+            if (runner.Exchange != null && runner.Exchange.AvailableToBack != null)
             {
-                var marketId = marketBook.MarketId;
-                var selectionId = runner.SelectionId;
-                var status = runner.Status;
-                Console.WriteLine($"Market Id: {marketId}    Runner Id: {selectionId}    Status: {status}");
-                command.Parameters.Clear(); 
-                command.Parameters.AddWithValue("$MarketId", marketId);
-                command.Parameters.AddWithValue("$SelectionId", selectionId);
-                command.Parameters.AddWithValue("$Status", status);
-
-                if (runner.Exchange != null && runner.Exchange.AvailableToBack != null)
+                foreach (var back in runner.Exchange.AvailableToBack)
                 {
-                    foreach (var back in runner.Exchange.AvailableToBack)
-                    {
-                        Console.WriteLine($"Runners Back:  {back.Price}   {back.Size} {runner.Exchange.AvailableToBack.Count}");
-                    }
-
-                    foreach (var back in runner.Exchange.AvailableToBack)
-                    {
-                        command.Parameters.Clear(); 
-                        command.Parameters.AddWithValue("$MarketId", marketId);
-                        command.Parameters.AddWithValue("$SelectionId", selectionId);
-                        command.Parameters.AddWithValue("$Status", status);
-                        command.Parameters.AddWithValue("$PriceType", "AvailableToBack");
-                        command.Parameters.AddWithValue("$Price", back.Price ?? (object)DBNull.Value);
-                        command.Parameters.AddWithValue("$Size", back.Size ?? (object)DBNull.Value);
-
-                        await command.ExecuteNonQueryAsync(); 
-                    }
+                    Console.WriteLine($"Runners Back:  {back.Price}   {back.Size} {runner.Exchange.AvailableToBack.Count}");
                 }
-                Console.WriteLine($"AvailableToBack Count: {runner.Exchange.AvailableToBack.Count}");
-                
-                if (runner.Exchange != null && runner.Exchange.AvailableToLay != null && runner.Exchange.AvailableToLay.Any())
+
+                foreach (var back in runner.Exchange.AvailableToBack)
                 {
-                    foreach (var lay in runner.Exchange.AvailableToLay)
-                    {
-                        Console.WriteLine($"Runners Lay:  {lay.Price}   {lay.Size} {runner.Exchange.AvailableToLay.Count}");
-                    }
-                    foreach (var lay in runner.Exchange.AvailableToLay)
-                    {
-                        command.Parameters.Clear();
+                    command.Parameters.Clear();
+                    command.Parameters.AddWithValue("$MarketId", marketId);
+                    command.Parameters.AddWithValue("$MarketName", marketList.MarketName);  // Insert the Market Name
+                    command.Parameters.AddWithValue("$SelectionId", selectionId);
+                    command.Parameters.AddWithValue("$Status", status);
+                    command.Parameters.AddWithValue("$PriceType", "AvailableToBack");
+                    command.Parameters.AddWithValue("$Price", back.Price ?? (object)DBNull.Value);
+                    command.Parameters.AddWithValue("$Size", back.Size ?? (object)DBNull.Value);
 
-                        command.Parameters.AddWithValue("$MarketId", marketId);
-                        command.Parameters.AddWithValue("$SelectionId", selectionId);
-                        command.Parameters.AddWithValue("$Status", status);
-                        command.Parameters.AddWithValue("$PriceType", "AvailableToLay");
-                        command.Parameters.AddWithValue("$Price", lay.Price ?? (object)DBNull.Value);
-                        command.Parameters.AddWithValue("$Size", lay.Size ?? (object)DBNull.Value);
-
-                        await command.ExecuteNonQueryAsync();
-                    }
+                    await command.ExecuteNonQueryAsync();
                 }
-                Console.WriteLine($"AvailableToLay Count: {runner.Exchange.AvailableToLay.Count}");
             }
+
+            Console.WriteLine($"AvailableToBack Count: {runner.Exchange.AvailableToBack.Count}");
+
+            if (runner.Exchange != null && runner.Exchange.AvailableToLay != null && runner.Exchange.AvailableToLay.Any())
+            {
+                foreach (var lay in runner.Exchange.AvailableToLay)
+                {
+                    Console.WriteLine($"Runners Lay:  {lay.Price}   {lay.Size} {runner.Exchange.AvailableToLay.Count}");
+                }
+
+                foreach (var lay in runner.Exchange.AvailableToLay)
+                {
+                    command.Parameters.Clear();
+
+                    command.Parameters.AddWithValue("$MarketId", marketId);
+                    command.Parameters.AddWithValue("$MarketName", marketList.MarketName);  // Insert the Market Name
+                    command.Parameters.AddWithValue("$SelectionId", selectionId);
+                    command.Parameters.AddWithValue("$Status", status);
+                    command.Parameters.AddWithValue("$PriceType", "AvailableToLay");
+                    command.Parameters.AddWithValue("$Price", lay.Price ?? (object)DBNull.Value);
+                    command.Parameters.AddWithValue("$Size", lay.Size ?? (object)DBNull.Value);
+
+                    await command.ExecuteNonQueryAsync();
+                }
+            }
+            Console.WriteLine($"AvailableToLay Count: {runner.Exchange.AvailableToLay.Count}");
         }
-        await transaction.CommitAsync();
+    }
+
+    await transaction.CommitAsync();
+}
+
+    private async Task<MarketInfo> GetMarketNameAndEventNameByMarketId(SqliteConnection connection, string marketId)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+        SELECT MarketName, EventName 
+        FROM MarketCatalogue
+        WHERE MarketId = $MarketId";
+
+        // Bind the MarketId parameter correctly
+        command.Parameters.AddWithValue("$MarketId", marketId);
+
+        // Execute the command and get the result
+        using var reader = await command.ExecuteReaderAsync();
+
+        if (await reader.ReadAsync())
+        {
+            return new MarketInfo
+            {
+                MarketName = reader.GetString(0),  
+                EventName = reader.GetString(1)  
+            };
+        }
+
+        return null;  
     }
 
 

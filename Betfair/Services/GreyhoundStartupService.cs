@@ -1,8 +1,9 @@
 using Betfair.AutomationServices;
-using Betfair.Data;
 using Betfair.Handlers;
+using Betfair.Models.Data;
 using Betfair.Models.Event;
 using Betfair.Services.Account;
+using Betfair.Services.HistoricalData;
 
 namespace Betfair.Services;
 
@@ -12,25 +13,40 @@ public class GreyhoundStartupService : BackgroundService
     private readonly EventAutomationService _eventAutomationService;
     private readonly OrderService _orderService;
     private readonly AccountService _accountService;
-    
+    private readonly HistoricalDataService _historicalDataService;
     public GreyhoundStartupService(
         GreyhoundAutomationService greyhoundAutomationService,
         EventAutomationService eventAutomationService,
         OrderService orderService, 
-        AccountService accountService) 
+        AccountService accountService, 
+        HistoricalDataService historicalDataService) 
     {
         _greyhoundAutomationService = greyhoundAutomationService;
         _eventAutomationService = eventAutomationService;
         _orderService = orderService;
         _accountService = accountService;
+        _historicalDataService = historicalDataService;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        var request = new HistoricalDataRequest(
+            sport: "Greyhound Racing", 
+            plan: "Basic Plan", 
+            fromDay: 1, fromMonth: 11, fromYear: 20204,
+            toDay: 31, toMonth: 11, toYear: 2024, 
+            marketTypes: new List<string> { "WIN", "PLACE" },  
+            countries: new List<string> { "AU" }
+        );
+        
         while (!stoppingToken.IsCancellationRequested)
         {
+            //_tarBz2Extractor.ProcessFolder("/Users/clairegrady/Downloads/BASIC", "/Users/clairegrady/Desktop/Betfair");
+            
             var eventList = await _eventAutomationService.FetchAndStoreListOfEventsAsync(new List<string> {"4339"});
-            var eventString = ConvertEventListToStrings(eventList);
+            var auEventList = eventList.Where(e => e.Event.CountryCode == "AU").ToList();
+
+            var eventString = ConvertEventListToStrings(auEventList);
             Console.WriteLine(eventString.First());
             var marketCatalogues = await _greyhoundAutomationService.ProcessGreyhoundMarketCataloguesAsync(eventString.First());
 
@@ -38,7 +54,11 @@ public class GreyhoundStartupService : BackgroundService
                 .Select(market => market.MarketId)  
                 .ToList();
             await _greyhoundAutomationService.ProcessGreyhoundMarketBooksAsync(marketIds);
-
+            var dataPackageList = await _historicalDataService.ListDataPackagesAsync();
+            var filteredCollectionOptions = await _historicalDataService.GetCollectionOptionsAsync(request);
+            
+            var filteredAdvDataSizeOptions = await _historicalDataService.GetDataSizeAsync(request);
+            Console.WriteLine(filteredCollectionOptions.Length);
             var accountFundsJson = await _accountService.GetAccountFundsAsync();
             DisplayHandler.DisplayAccountData(accountFundsJson); 
             

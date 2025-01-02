@@ -21,6 +21,12 @@ public class DisplayHandler
             var availableToLayPrice = reader.IsDBNull(reader.GetOrdinal("LayPrice")) ? "N/A" : reader.GetDecimal(reader.GetOrdinal("LayPrice")).ToString();
             var availableToLaySize = reader.IsDBNull(reader.GetOrdinal("LaySize")) ? "N/A" : reader.GetDecimal(reader.GetOrdinal("LaySize")).ToString();
             
+            if (string.IsNullOrEmpty(eventName) && string.IsNullOrEmpty(marketId) && string.IsNullOrEmpty(marketName))
+            {
+                return;
+            }
+            
+            
             int maxEventNameLength = eventName.Length > 20 ? eventName.Length : 20;
             string formatString = $"{{0,-{maxEventNameLength}}} | {{1,-15}} | {{2,-18}} | {{3,-12}} | {{4,-11}} | {{5,-7}} | {{6,-15}} | {{7,-19}} | {{8,-19}} | {{9,-19}} | {{10,-19}}";
     

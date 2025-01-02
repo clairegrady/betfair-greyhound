@@ -97,7 +97,7 @@ public class GreyhoundAutomationService
     {
         var marketCatalogueJson = await _marketService.ListMarketCatalogue(eventId: eventId, competitionId: competitionId);
         var marketCatalogueApiResponse = JsonSerializer.Deserialize<ApiResponse<MarketCatalogue>>(marketCatalogueJson);
-
+    
         if (marketCatalogueApiResponse == null)
         {
             Console.WriteLine("Failed to deserialize the market catalogue JSON.");
@@ -106,9 +106,9 @@ public class GreyhoundAutomationService
         {
             Console.WriteLine($"Deserialized Market Catalogue Result Count: {marketCatalogueApiResponse.Result?.Count()}");
         }
-
+    
         var filteredMarketIds = new List<MarketDetails>();
-
+    
         if (marketCatalogueApiResponse?.Result != null && marketCatalogueApiResponse.Result.Any())
         {
             var marketCatalogues = marketCatalogueApiResponse.Result
@@ -125,7 +125,7 @@ public class GreyhoundAutomationService
                             Name = catalogue.EventType.Name
                         }
                         : null,
-
+    
                     Competition = catalogue.Competition != null 
                         ? new Competition
                         {
@@ -133,7 +133,7 @@ public class GreyhoundAutomationService
                             Name = catalogue.Competition.Name
                         }
                         : null,
-
+    
                     Event = catalogue.Event != null 
                         ? new Event
                         {
@@ -175,4 +175,5 @@ public class GreyhoundAutomationService
         }
         return filteredMarketIds;
     }
+
 }
