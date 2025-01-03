@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 namespace Betfair.Models.Data;
 
 public class HistoricalDataRequest
@@ -14,10 +12,11 @@ public class HistoricalDataRequest
     public int ToYear { get; set; }
     public List<string> MarketTypes { get; set; }
     public List<string> Countries { get; set; }
+    public List<string> FileTypes { get; set; }
 
     // Constructor to initialize the object with the provided values
     public HistoricalDataRequest(string sport, string plan, int fromDay, int fromMonth, int fromYear,
-        int toDay, int toMonth, int toYear, List<string> marketTypes, List<string> countries)
+        int toDay, int toMonth, int toYear, List<string> marketTypes = null, List<string> countries = null, List<string> fileTypes = null)
     {
         Sport = sport;
         Plan = plan;
@@ -27,7 +26,8 @@ public class HistoricalDataRequest
         ToDay = toDay;
         ToMonth = toMonth;
         ToYear = toYear;
-        MarketTypes = marketTypes ?? new List<string>();
-        Countries = countries ?? new List<string>();
+        MarketTypes = marketTypes ?? new List<string>(); 
+        Countries = countries ?? new List<string>();   
+        FileTypes = fileTypes ?? new List<string>();
     }
 }

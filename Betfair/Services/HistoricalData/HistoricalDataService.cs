@@ -41,14 +41,16 @@ public class HistoricalDataService : IHistoricalDataService
             id = 1
         };
         _httpClient.DefaultRequestHeaders.Add("ssoid", _sessionToken);
-
+        
         var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
-        var response = await _httpClient.PostAsync(_settings.GetMyDataEndpoint , content);
+        var response = await _httpClient.PostAsync(_settings.GetMyDataEndpoint, content);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadAsStringAsync();
     }
 
-    public async Task<string> GetCollectionOptionsAsync(HistoricalDataRequest request)
+    public async Task<string> GetCollectionOptionsAsync(string sport, string plan, int fromDay, int fromMonth,
+        int fromYear, int toDay, int toMonth, int toYear, List<string> marketTypes, List<string> countries,
+        List<string> fileTypes)
     {
         _sessionToken = await _authService.GetSessionTokenAsync();
 
@@ -58,24 +60,25 @@ public class HistoricalDataService : IHistoricalDataService
             method = "HistoricData/v1.0/GetCollectionOptions",
             @params = new
             {
-                request.Sport,
-                request.Plan,
-                request.FromDay,
-                request.FromMonth,
-                request.FromYear,
-                request.ToDay,
-                request.ToMonth,
-                request.ToYear,
-                eventId = (object)null,
-                eventName = (object)null,
-                marketTypesCollection = request.MarketTypes,
-                countriesCollection = request.Countries
+                sport,
+                plan,
+                fromDay,
+                fromMonth,
+                fromYear,
+                toDay,
+                toMonth,
+                toYear,
+                eventId = "",
+                eventName = "",
+                marketTypesCollection = marketTypes,
+                countriesCollection = countries,
+                fileTypesCollection = fileTypes
             },
             id = 1
         };
 
         _httpClient.DefaultRequestHeaders.Add("ssoid", _sessionToken);
-
+        Console.WriteLine(_sessionToken);
         var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
         var response = await _httpClient.PostAsync(_settings.GetCollectionOptionsEndpoint, content);
         response.EnsureSuccessStatusCode();
@@ -109,8 +112,13 @@ public class HistoricalDataService : IHistoricalDataService
         _httpClient.DefaultRequestHeaders.Add("ssoid", _sessionToken);
 
         var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
-        var response = await _httpClient.PostAsync(_settings.GetMyDataEndpoint, content);
+        var response = await _httpClient.PostAsync(_settings.GetAdvBasketDataSizeEndpoint, content);
         response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorResponse = await response.Content.ReadAsStringAsync();
+            Console.WriteLine($"Error in response: {errorResponse}");
+        }
         return await response.Content.ReadAsStringAsync();
     }
 
@@ -211,7 +219,18 @@ public interface IHistoricalDataService
 {
     Task<string> ListDataPackagesAsync();
 
-    Task<string> GetCollectionOptionsAsync(HistoricalDataRequest request);
+    Task<string> GetCollectionOptionsAsync(
+        string sport,
+        string plan,
+        int fromDay,
+        int fromMonth,
+        int fromYear,
+        int toDay,
+        int toMonth,
+        int toYear,
+        List<string> marketTypes,
+        List<string> countries,
+        List<string> fileTypes);
 
     Task<string> GetDataSizeAsync(HistoricalDataRequest request);
 
@@ -247,6 +266,7 @@ public class CollectionOptionResponse
 {
     public List<MarketType> marketTypesCollection { get; set; }
     public List<Country> countriesCollection { get; set; }
+    public List<FileType> fileTypesCollection { get; set; }
 }
 
 public class MarketType
