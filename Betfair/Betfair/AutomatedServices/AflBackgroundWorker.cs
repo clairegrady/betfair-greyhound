@@ -2,16 +2,17 @@ using Betfair.Handlers;
 using Betfair.Models.Event;
 using Betfair.Services;
 using Betfair.Services.Account;
+using Betfair.AutomationServices;
 
 namespace Betfair.AutomatedServices;
 
-public class AflStartupService : BackgroundService
+public class AflBackgroundWorker : BackgroundService
 {
     private readonly AflService _aflService;
     private readonly EventAutomationService _eventAutomationService;
     private readonly AccountService _accountService;
 
-    public AflStartupService(
+    public AflBackgroundWorker(
         AflService aflService,
         EventAutomationService eventAutomationService,
         AccountService accountService)
@@ -25,7 +26,7 @@ public class AflStartupService : BackgroundService
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            var eventList = await _eventAutomationService.FetchAndStoreListOfEventsAsync(new List<string> { "6420" }); 
+            var eventList = await _eventAutomationService.FetchAndStoreListOfEventsAsync(new List<string> { "6420" });
             var auEventList = eventList.Where(e => e.Event.CountryCode == "AU").ToList();
             var eventIds = ConvertEventListToStrings(auEventList);
 

@@ -10,19 +10,19 @@ using Betfair.Services;
 namespace Betfair.AutomationServices;
 public class GreyhoundAutomationService
 {
-    private readonly IMarketService _marketService;
+    private readonly IMarketApiService _marketApiService;
     private readonly ListMarketCatalogueDb _listMarketCatalogueDb;
     private readonly MarketBookDb _marketBookDb;
     
-    public GreyhoundAutomationService(IMarketService marketService, ListMarketCatalogueDb listMarketCatalogueDb, MarketBookDb marketBookDb)
+    public GreyhoundAutomationService(IMarketApiService marketApiService, ListMarketCatalogueDb listMarketCatalogueDb, MarketBookDb marketBookDb)
     {
-        _marketService = marketService;
+        _marketApiService = marketApiService;
         _listMarketCatalogueDb = listMarketCatalogueDb;
         _marketBookDb = marketBookDb;
     }
     public async Task ProcessGreyhoundMarketBooksAsync(List<string> marketIds)
     {
-        var marketBookJson = await _marketService.ListMarketBookAsync(marketIds);
+        var marketBookJson = await _marketApiService.ListMarketBookAsync(marketIds);
         var marketBookApiResponse = JsonSerializer.Deserialize<ApiResponse<MarketBook>>(marketBookJson);
        if (marketBookApiResponse?.Result?.Any() == true) 
         {
@@ -95,7 +95,7 @@ public class GreyhoundAutomationService
     }
      public async Task<List<MarketDetails>> ProcessGreyhoundMarketCataloguesAsync(string eventId = null, string competitionId = null)
     {
-        var marketCatalogueJson = await _marketService.ListMarketCatalogue(eventId: eventId, competitionId: competitionId);
+        var marketCatalogueJson = await _marketApiService.ListMarketCatalogue(eventId: eventId, competitionId: competitionId);
         var marketCatalogueApiResponse = JsonSerializer.Deserialize<ApiResponse<MarketCatalogue>>(marketCatalogueJson);
     
         if (marketCatalogueApiResponse == null)

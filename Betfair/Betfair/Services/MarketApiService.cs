@@ -7,7 +7,7 @@ using Betfair.Settings;
 using Microsoft.Extensions.Options;
 
 namespace Betfair.Services;
-public class MarketService : IMarketService
+public class MarketApiService : IMarketApiService
 {
     private readonly HttpClient _httpClient;
     private readonly BetfairAuthService _authService;
@@ -15,7 +15,7 @@ public class MarketService : IMarketService
     private readonly EndpointSettings _settings; 
     private string _sessionToken;
 
-    public MarketService(HttpClient httpClient, BetfairAuthService authService, IOptions<EndpointSettings> options, MarketProfitAndLossDb marketProfitAndLossDb)
+    public MarketApiService(HttpClient httpClient, BetfairAuthService authService, IOptions<EndpointSettings> options, MarketProfitAndLossDb marketProfitAndLossDb)
     {
         _httpClient = httpClient;
         _authService = authService; 
@@ -155,7 +155,7 @@ public class MarketService : IMarketService
 }
 
 
-public interface IMarketService
+public interface IMarketApiService
 {
     Task<string> ListMarketCatalogue(string competitionId = null, string eventId = null);
     Task<string> ListMarketBookAsync(List<string> marketIds);

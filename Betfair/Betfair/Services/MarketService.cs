@@ -154,12 +154,6 @@ public class MarketService : IMarketService
     }
 }
 
-
 public interface IMarketService
 {
-    Task<string> ListMarketCatalogue(string competitionId = null, string eventId = null);
-    Task<string> ListMarketBookAsync(List<string> marketIds);
-    Task<string> GetMarketProfitAndLossAsync(List<string> marketIds);
-    Task ProcessAndStoreMarketProfitAndLoss(List<string> marketIds);
 }
-

@@ -6,22 +6,22 @@ using Betfair.Models.Market;
 
 namespace Betfair.Services;
 
-public class AflAutomationService
+public class AflService
 {
-    private readonly IMarketService _marketService;
+    private readonly IMarketApiService _marketApiService;
     private readonly ListMarketCatalogueDb _listMarketCatalogueDb;
     private readonly MarketBookDb _marketBookDb;
 
-    public AflAutomationService(IMarketService marketService, ListMarketCatalogueDb listMarketCatalogueDb, MarketBookDb marketBookDb)
+    public AflService(IMarketApiService marketApiService, ListMarketCatalogueDb listMarketCatalogueDb, MarketBookDb marketBookDb)
     {
-        _marketService = marketService;
+        _marketApiService = marketApiService;
         _listMarketCatalogueDb = listMarketCatalogueDb;
         _marketBookDb = marketBookDb;
     }
 
     public async Task ProcessAflMarketBooksAsync(List<string> marketIds)
     {
-        var marketBookJson = await _marketService.ListMarketBookAsync(marketIds);
+        var marketBookJson = await _marketApiService.ListMarketBookAsync(marketIds);
         var marketBookApiResponse = JsonSerializer.Deserialize<ApiResponse<MarketBook>>(marketBookJson);
 
         if (marketBookApiResponse?.Result?.Any() == true)
@@ -62,7 +62,7 @@ public class AflAutomationService
 
     public async Task<List<MarketDetails>> ProcessAflMarketCataloguesAsync(string eventId = null, string competitionId = null)
     {
-        var marketCatalogueJson = await _marketService.ListMarketCatalogue(eventId: eventId, competitionId: competitionId);
+        var marketCatalogueJson = await _marketApiService.ListMarketCatalogue(eventId: eventId, competitionId: competitionId);
         var marketCatalogueApiResponse = JsonSerializer.Deserialize<ApiResponse<MarketCatalogue>>(marketCatalogueJson);
 
         var filteredMarketIds = new List<MarketDetails>();

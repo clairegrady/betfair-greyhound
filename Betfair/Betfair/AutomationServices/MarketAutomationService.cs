@@ -16,19 +16,19 @@ public class MarketDetails
 }
 public class MarketAutomationService
 {
-    private readonly IMarketService _marketService;
+    private readonly IMarketApiService _marketApiService;
     private readonly ListMarketCatalogueDb _listMarketCatalogueDb;
     private readonly MarketBookDb _marketBookDb;
     
-    public MarketAutomationService(IMarketService marketService, ListMarketCatalogueDb listMarketCatalogueDb, MarketBookDb marketBookDb)
+    public MarketAutomationService(IMarketApiService marketApiService, ListMarketCatalogueDb listMarketCatalogueDb, MarketBookDb marketBookDb)
     {
-        _marketService = marketService;
+        _marketApiService = marketApiService;
         _listMarketCatalogueDb = listMarketCatalogueDb;
         _marketBookDb = marketBookDb;
     }
     public async Task ProcessMarketBooksAsync(List<string> marketIds)
     {
-        var marketBookJson = await _marketService.ListMarketBookAsync(marketIds);
+        var marketBookJson = await _marketApiService.ListMarketBookAsync(marketIds);
         var marketBookApiResponse = JsonSerializer.Deserialize<ApiResponse<MarketBook>>(marketBookJson);
        if (marketBookApiResponse?.Result?.Any() == true) 
         {
@@ -101,7 +101,7 @@ public class MarketAutomationService
     }
      public async Task<List<MarketDetails>> ProcessMarketCataloguesAsync(string eventId = null, string competitionId = null)
     {
-        var marketCatalogueJson = await _marketService.ListMarketCatalogue(eventId: eventId, competitionId: competitionId);
+        var marketCatalogueJson = await _marketApiService.ListMarketCatalogue(eventId: eventId, competitionId: competitionId);
         var marketCatalogueApiResponse = JsonSerializer.Deserialize<ApiResponse<MarketCatalogue>>(marketCatalogueJson);
 
         if (marketCatalogueApiResponse == null)
@@ -184,7 +184,7 @@ public class MarketAutomationService
     
     public async Task<List<string>> ProcessNbaMarketCataloguesAsync(string eventId)
     {
-        var marketCatalogueJson = await _marketService.ListMarketCatalogue(eventId);
+        var marketCatalogueJson = await _marketApiService.ListMarketCatalogue(eventId);
         var marketCatalogueApiResponse = JsonSerializer.Deserialize<ApiResponse<MarketCatalogue>>(marketCatalogueJson);
 
         var filteredMarketIds = new List<string>();
@@ -264,7 +264,7 @@ public class MarketAutomationService
     {
         try
         {
-            await _marketService.ProcessAndStoreMarketProfitAndLoss(marketIds);
+            await _marketApiService.ProcessAndStoreMarketProfitAndLoss(marketIds);
 
             Console.WriteLine("Market Profit and Loss data fetched and stored successfully.");
         }

@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Betfair.Settings;
+using Betfair.AutomatedServices;
 using Microsoft.Extensions.Options;
 
 namespace Betfair.Services.Account;
@@ -73,7 +74,7 @@ public class AccountService
         return responseContent;  
     }
 
-    public async Task<string> GetAccountStatementAsync(string locale, int recordCount, BetfairAutomationServicePlaceOrder.TimeRange itemDateRange, string includeItem, string wallet)
+    public async Task<string> GetAccountStatementAsync(string locale, int recordCount, BetfairPlaceOrderBackgroundWorker.TimeRange itemDateRange, string includeItem, string wallet)
     {
         var sessionToken = await _authService.GetSessionTokenAsync();
 

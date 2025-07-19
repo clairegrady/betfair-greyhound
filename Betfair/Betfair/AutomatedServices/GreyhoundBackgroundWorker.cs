@@ -1,27 +1,27 @@
+using Betfair.AutomationServices;
 using Betfair.Handlers;
 using Betfair.Models.Data;
 using Betfair.Models.Event;
-using Betfair.Services;
 using Betfair.Services.Account;
 using Betfair.Services.HistoricalData;
 
 namespace Betfair.AutomatedServices;
 
-public class GreyhoundStartupService : BackgroundService
+public class GreyhoundBackgroundWorker : BackgroundService
 {
-    private readonly GreyhoundService _greyhoundService;
+    private readonly GreyhoundAutomationService _greyhoundAutomationService;
     private readonly EventAutomationService _eventAutomationService;
     private readonly OrderService _orderService;
     private readonly AccountService _accountService;
     private readonly HistoricalDataService _historicalDataService;
-    public GreyhoundStartupService(
-        GreyhoundService greyhoundService,
+    public GreyhoundBackgroundWorker(
+        GreyhoundAutomationService greyhoundAutomationService,
         EventAutomationService eventAutomationService,
         OrderService orderService, 
         AccountService accountService, 
         HistoricalDataService historicalDataService) 
     {
-        _greyhoundService = greyhoundService;
+        _greyhoundAutomationService = greyhoundAutomationService;
         _eventAutomationService = eventAutomationService;
         _orderService = orderService;
         _accountService = accountService;
@@ -48,12 +48,12 @@ public class GreyhoundStartupService : BackgroundService
             var auEventList = eventList.Where(e => e.Event.CountryCode == "AU").ToList();
 
             var eventString = ConvertEventListToStrings(auEventList);
-            var marketCatalogues = await _greyhoundService.ProcessGreyhoundMarketCataloguesAsync(eventString.First());
+            var marketCatalogues = await _greyhoundAutomationService.ProcessGreyhoundMarketCataloguesAsync(eventString.First());
 
             var marketIds = marketCatalogues
                 .Select(market => market.MarketId)  
                 .ToList();
-            await _greyhoundService.ProcessGreyhoundMarketBooksAsync(marketIds);
+            await _greyhoundAutomationService.ProcessGreyhoundMarketBooksAsync(marketIds);
             var dataPackageList = await _historicalDataService.ListDataPackagesAsync();
             var filteredCollectionOptions = await _historicalDataService.GetCollectionOptionsAsync(request.Sport, request.Plan, request.FromDay, request.FromMonth, request.FromYear, request.ToDay, request.ToMonth, request.ToYear, request.MarketTypes, request.Countries, request.FileTypes);
             

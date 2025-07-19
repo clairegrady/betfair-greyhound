@@ -1,14 +1,15 @@
 using Betfair.Services;
+using Betfair.AutomationServices;
 
-namespace Betfair.AutomatedServices;
-public class BetfairStartupService : BackgroundService
+namespace Betfair.AutomatedStartupServices;
+public class BetfairBackgroundWorker : BackgroundService
 {
     private readonly CompetitionProcessor _competitionProcessor;
     private readonly EventAutomationService _eventAutomationService;
     private readonly MarketProcessor _marketProcessor;
     private readonly DatabaseService _databaseService;
 
-    public BetfairStartupService(
+    public BetfairBackgroundWorker(
         CompetitionProcessor competitionProcessor,
         EventAutomationService eventAutomationService,
         MarketProcessor marketProcessor, 

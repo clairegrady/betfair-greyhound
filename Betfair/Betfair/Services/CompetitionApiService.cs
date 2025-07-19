@@ -8,7 +8,7 @@ using Betfair.Settings;
 using Microsoft.Extensions.Options;
 
 namespace Betfair.Services;
-public class CompetitionService : ICompetitionService
+public class CompetitionApiService : ICompetitionApiService
 {
     private readonly HttpClient _httpClient;
     private readonly BetfairAuthService _authService; 
@@ -16,7 +16,7 @@ public class CompetitionService : ICompetitionService
     private readonly EndpointSettings _settings;
     private string _sessionToken;
 
-    public CompetitionService(HttpClient httpClient, BetfairAuthService authService, IOptions<EndpointSettings> options, CompetitionDb competitionDb)
+    public CompetitionApiService(HttpClient httpClient, BetfairAuthService authService, IOptions<EndpointSettings> options, CompetitionDb competitionDb)
     {
         _httpClient = httpClient;
         _authService = authService;
@@ -82,7 +82,7 @@ public class CompetitionService : ICompetitionService
     }
 }
 
-public interface ICompetitionService
+public interface ICompetitionApiService
 {
     Task<string> ListCompetitions();
     Task<(bool IsSuccess, string ErrorMessage)> FetchAndInsertCompetitionsAsync();

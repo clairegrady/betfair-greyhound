@@ -1,16 +1,17 @@
 using Betfair.AutomationServices;
 using Betfair.Handlers;
 using Betfair.Services.Account;
+using Betfair.Services;
 
-namespace Betfair.Services;
-public class BetfairAutomationServicePlaceOrder : BackgroundService
+namespace Betfair.AutomatedServices;
+public class BetfairPlaceOrderBackgroundWorker : BackgroundService
 {
     private readonly CompetitionAutomationService _competitionAutomationService;
     private readonly MarketAutomationService _marketAutomationService;
     private readonly OrderService _orderService;
     private readonly AccountService _accountService;
     
-    public BetfairAutomationServicePlaceOrder(
+    public BetfairPlaceOrderBackgroundWorker(
         CompetitionAutomationService competitionAutomationService,
         MarketAutomationService marketAutomationService,
         OrderService orderService, 

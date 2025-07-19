@@ -60,3 +60,12 @@
 /Users/clairegrady/IdeaProjects/betfair/Betfair/obj/Debug/net9.0/Betfair.pdb
 /Users/clairegrady/IdeaProjects/betfair/Betfair/obj/Debug/net9.0/Betfair.genruntimeconfig.cache
 /Users/clairegrady/IdeaProjects/betfair/Betfair/obj/Debug/net9.0/ref/Betfair.dll
+/Users/clairegrady/Downloads/Old Betfair/betfair/Betfair/Betfair/obj/Debug/net9.0/Betfair.csproj.AssemblyReference.cache
+/Users/clairegrady/Downloads/Old Betfair/betfair/Betfair/Betfair/obj/Debug/net9.0/rpswa.dswa.cache.json
+/Users/clairegrady/Downloads/Old Betfair/betfair/Betfair/Betfair/obj/Debug/net9.0/Betfair.GeneratedMSBuildEditorConfig.editorconfig
+/Users/clairegrady/Downloads/Old Betfair/betfair/Betfair/Betfair/obj/Debug/net9.0/Betfair.AssemblyInfoInputs.cache
+/Users/clairegrady/Downloads/Old Betfair/betfair/Betfair/Betfair/obj/Debug/net9.0/Betfair.AssemblyInfo.cs
+/Users/clairegrady/Downloads/Old Betfair/betfair/Betfair/Betfair/obj/Debug/net9.0/Betfair.csproj.CoreCompileInputs.cache
+/Users/clairegrady/Downloads/Old Betfair/betfair/Betfair/Betfair/obj/Debug/net9.0/Betfair.MvcApplicationPartsAssemblyInfo.cs
+/Users/clairegrady/Downloads/Old Betfair/betfair/Betfair/Betfair/obj/Debug/net9.0/Betfair.MvcApplicationPartsAssemblyInfo.cache
+/Users/clairegrady/Downloads/Old Betfair/betfair/Betfair/Betfair/obj/Debug/net9.0/Betfair.sourcelink.json

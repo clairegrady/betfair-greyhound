@@ -4,12 +4,12 @@ using Betfair.Models;
 using Betfair.Models.Competition;
 
 namespace Betfair.Services;
-public class CompetitionAutomationService
+public class CompetitionProcessor
 {
     private readonly ICompetitionService _competitionService;
     private readonly CompetitionDb _competitionDb;
     
-    public CompetitionAutomationService(ICompetitionService competitionService, CompetitionDb competitionDb)
+    public CompetitionProcessor(ICompetitionService competitionService, CompetitionDb competitionDb)
     {
         _competitionService = competitionService;
         _competitionDb = competitionDb;

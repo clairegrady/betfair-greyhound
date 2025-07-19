@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "/Users/clairegrady/IdeaProjects/Betfair-Bot/betfair/Betfair/Betfair.csproj": {}
+    "/Users/clairegrady/Downloads/Old Betfair/betfair/Betfair/Betfair/Betfair.csproj": {}
   },
   "projects": {
-    "/Users/clairegrady/IdeaProjects/Betfair-Bot/betfair/Betfair/Betfair.csproj": {
+    "/Users/clairegrady/Downloads/Old Betfair/betfair/Betfair/Betfair/Betfair.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/Users/clairegrady/IdeaProjects/Betfair-Bot/betfair/Betfair/Betfair.csproj",
+        "projectUniqueName": "/Users/clairegrady/Downloads/Old Betfair/betfair/Betfair/Betfair/Betfair.csproj",
         "projectName": "Betfair",
-        "projectPath": "/Users/clairegrady/IdeaProjects/Betfair-Bot/betfair/Betfair/Betfair.csproj",
+        "projectPath": "/Users/clairegrady/Downloads/Old Betfair/betfair/Betfair/Betfair/Betfair.csproj",
         "packagesPath": "/Users/clairegrady/.nuget/packages/",
-        "outputPath": "/Users/clairegrady/IdeaProjects/Betfair-Bot/betfair/Betfair/obj/",
+        "outputPath": "/Users/clairegrady/Downloads/Old Betfair/betfair/Betfair/Betfair/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "/Users/clairegrady/.nuget/NuGet/NuGet.Config"
