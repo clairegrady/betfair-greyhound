@@ -39,7 +39,7 @@ builder.Services.AddHttpClient<IEventService, EventService>((sp, client) =>
 });
 
 
-builder.Services.AddHttpClient<IMarketService, MarketService>((sp, client) =>
+builder.Services.AddHttpClient<IMarketApiService, MarketApiService>((sp, client) =>
 {
     BetfairHttpClientFactory.ConfigureBetfairClient(client, sp);
 }).ConfigurePrimaryHttpMessageHandler(sp =>

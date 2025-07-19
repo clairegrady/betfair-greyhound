@@ -6765,11 +6765,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "/Users/clairegrady/Downloads/Old Betfair/betfair/Betfair/Betfair/Betfair.csproj",
+      "projectUniqueName": "/Users/clairegrady/RiderProjects/betfair/Betfair/Betfair/Betfair.csproj",
       "projectName": "Betfair",
-      "projectPath": "/Users/clairegrady/Downloads/Old Betfair/betfair/Betfair/Betfair/Betfair.csproj",
+      "projectPath": "/Users/clairegrady/RiderProjects/betfair/Betfair/Betfair/Betfair.csproj",
       "packagesPath": "/Users/clairegrady/.nuget/packages/",
-      "outputPath": "/Users/clairegrady/Downloads/Old Betfair/betfair/Betfair/Betfair/obj/",
+      "outputPath": "/Users/clairegrady/RiderProjects/betfair/Betfair/Betfair/obj/",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "/Users/clairegrady/.nuget/NuGet/NuGet.Config"
