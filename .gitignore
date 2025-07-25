@@ -1,0 +1,53 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# VS Code settings (if using VS Code)
+.vscode/
+
+# macOS system files
+.DS_Store
+
+# Environment files
+.env
+.venv/
+env/
+venv/
+
+# Data output (Parquet files, intermediate files, splits)
+*.parquet
+*.csv
+*.json
+*.jsonl
+*.log
+
+*.dll
+
+# Ignore specific directories inside historical-data
+historical-data/extracted/
+historical-data/jsonl_files/
+historical-data/processed/
+historical-data/raw/
+
+
+# Compressed files
+*.tar
+*.tar.gz
+*.tar.bz2
+*.zip
+*.bz2
+*.gz
+
+# Model artifacts
+*.pkl
+*.joblib
+*.h5
+models/
+checkpoints/
+
+# IPython history
+.history
