@@ -78,7 +78,8 @@ public class AflService
                     TotalMatched = catalogue.TotalMatched,
                     EventType = catalogue.EventType,
                     Competition = catalogue.Competition,
-                    Event = catalogue.Event
+                    Event = catalogue.Event,
+                    Runners = catalogue.Runners,
                 })
                 .ToList();
 

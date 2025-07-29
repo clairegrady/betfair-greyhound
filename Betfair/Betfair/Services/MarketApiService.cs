@@ -41,7 +41,8 @@ public class MarketApiService : IMarketApiService
             {
                 filter = filter,
                 maxResults = 1000,
-                marketProjection = new[] { "COMPETITION", "EVENT", "EVENT_TYPE" }
+                marketProjection = new[] { "COMPETITION", "EVENT", "EVENT_TYPE", "RUNNER_DESCRIPTION", "RUNNER_METADATA" }
+
             },
             id = 1
         };
@@ -52,6 +53,12 @@ public class MarketApiService : IMarketApiService
         var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
         var response = await _httpClient.PostAsync(_settings.ExchangeEndpoint, content);
         response.EnsureSuccessStatusCode();
+
+        var jsonResponse = await response.Content.ReadAsStringAsync();
+        // Print raw JSON response to console or log
+        Console.WriteLine("Raw Market Catalogue JSON Response:");
+        Console.WriteLine(jsonResponse);
+
         return await response.Content.ReadAsStringAsync(); 
     }
 
@@ -81,6 +88,46 @@ public class MarketApiService : IMarketApiService
         var response = await _httpClient.PostAsync(_settings.ExchangeEndpoint, content);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadAsStringAsync();
+    }
+
+    public async Task<string> ListHorseRacingMarketCatalogueAsync(string competitionId = null, string eventId = null)
+    {
+        _sessionToken = await _authService.GetSessionTokenAsync();
+
+        var filter = new
+        {
+            competitionIds = competitionId != null ? new[] { competitionId } : null,
+            eventIds = eventId != null ? new[] { eventId } : null,
+            eventTypeIds = new[] { "7" } // 7 is typically Horse Racing in Betfair API
+        };
+
+        var requestBody = new
+        {
+            jsonrpc = "2.0",
+            method = "SportsAPING/v1.0/listMarketCatalogue",
+            @params = new
+            {
+                filter = filter,
+                maxResults = 1000,
+                marketProjection = new[] { "COMPETITION", "EVENT", "EVENT_TYPE", "RUNNER_DESCRIPTION", "RUNNER_METADATA" }
+            },
+            id = 1
+        };
+
+        _httpClient.DefaultRequestHeaders.Remove("X-Authentication");
+        _httpClient.DefaultRequestHeaders.Add("X-Authentication", _sessionToken);
+
+        var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
+        var response = await _httpClient.PostAsync(_settings.ExchangeEndpoint, content);
+        response.EnsureSuccessStatusCode();
+
+        var jsonResponse = await response.Content.ReadAsStringAsync();
+
+        // Log raw JSON to check metadata fields
+        Console.WriteLine("Raw Horse Racing Market Catalogue JSON Response:");
+        Console.WriteLine(jsonResponse);
+
+        return jsonResponse;
     }
      public async Task<string> GetMarketProfitAndLossAsync(List<string> marketIds)
         {
@@ -161,5 +208,6 @@ public interface IMarketApiService
     Task<string> ListMarketBookAsync(List<string> marketIds);
     Task<string> GetMarketProfitAndLossAsync(List<string> marketIds);
     Task ProcessAndStoreMarketProfitAndLoss(List<string> marketIds);
+    Task<string> ListHorseRacingMarketCatalogueAsync(string competitionId = null, string eventId = null);
 }
 

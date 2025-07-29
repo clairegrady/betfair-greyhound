@@ -13,6 +13,20 @@ public class MarketDetails
 {
     public string MarketId { get; set; }
     public string MarketName { get; set; }
+    public long RunnerId { get; set; }
+    public string RunnerName { get; set; }
+
+    // Metadata fields
+    public string Form { get; set; }
+    public string Weight { get; set; }
+    public int? StallDraw { get; set; }
+    public string TrainerName { get; set; }
+    public string OwnerName { get; set; }
+    public string Age { get; set; }
+    public string SireName { get; set; }
+    public string DamName { get; set; }
+    public string Wearing { get; set; }
+    public string JockeyName { get; set; }
 }
 public class MarketAutomationService
 {
@@ -99,7 +113,7 @@ public class MarketAutomationService
             Console.WriteLine("Failed to deserialize market book or no market book data found.");
         }
     }
-     public async Task<List<MarketDetails>> ProcessMarketCataloguesAsync(string eventId = null, string competitionId = null)
+      public async Task<List<MarketDetails>> ProcessMarketCataloguesAsync(string eventId = null, string competitionId = null)
     {
         var marketCatalogueJson = await _marketApiService.ListMarketCatalogue(eventId: eventId, competitionId: competitionId);
         var marketCatalogueApiResponse = JsonSerializer.Deserialize<ApiResponse<MarketCatalogue>>(marketCatalogueJson);
@@ -118,13 +132,13 @@ public class MarketAutomationService
         if (marketCatalogueApiResponse?.Result != null && marketCatalogueApiResponse.Result.Any())
         {
             var marketCatalogues = marketCatalogueApiResponse.Result
-                .Where(catalogue => catalogue.Event != null) 
+                .Where(catalogue => catalogue.Event != null)
                 .Select(catalogue => new MarketCatalogue
                 {
                     MarketId = catalogue.MarketId,
                     MarketName = catalogue.MarketName,
                     TotalMatched = catalogue.TotalMatched,
-                    EventType = catalogue.EventType != null 
+                    EventType = catalogue.EventType != null
                         ? new EventType
                         {
                             Id = catalogue.EventType.Id,
@@ -132,7 +146,7 @@ public class MarketAutomationService
                         }
                         : null,
 
-                    Competition = catalogue.Competition != null 
+                    Competition = catalogue.Competition != null
                         ? new Competition
                         {
                             Id = catalogue.Competition.Id,
@@ -140,7 +154,7 @@ public class MarketAutomationService
                         }
                         : null,
 
-                    Event = catalogue.Event != null 
+                    Event = catalogue.Event != null
                         ? new Event
                         {
                             Id = catalogue.Event.Id,
@@ -149,23 +163,31 @@ public class MarketAutomationService
                             Timezone = catalogue.Event.Timezone,
                             OpenDate = catalogue.Event.OpenDate
                         }
-                        : null
+                        : null,
+                    Runners = catalogue.Runners != null
+                        ? catalogue.Runners.Select(runner => new RunnerDescription
+                        {
+                            RunnerId = runner.RunnerId,
+                            RunnerName = runner.RunnerName,
+                            Metadata = runner.Metadata
+                        }).ToList()
+                        : new List<RunnerDescription>()
                 })
                 .Where(catalogue => catalogue.Event != null)
                 .ToList();
 
             var today = DateTime.Now.Date;
-            var tomorrow = today.AddDays(1);
             filteredMarketIds = marketCatalogues
                 .Where(catalogue => catalogue.Event.Id.Equals(eventId, StringComparison.OrdinalIgnoreCase)
-                                    && Regex.IsMatch(catalogue.MarketName, @"^R\d{1,2}")                                    && catalogue.Event.OpenDate.Value.ToLocalTime().Date == today)
+                                    && Regex.IsMatch(catalogue.MarketName, @"^R\d{1,2}")
+                                    && catalogue.Event.OpenDate.Value.ToLocalTime().Date == today)
                 .Select(catalogue => new MarketDetails
                 {
                     MarketId = catalogue.MarketId,
                     MarketName = catalogue.MarketName
                 })
                 .ToList();
-            
+
             if (marketCatalogues.Any())
             {
                 await _listMarketCatalogueDb.InsertMarketsIntoDatabase(marketCatalogues);
@@ -181,6 +203,7 @@ public class MarketAutomationService
         }
         return filteredMarketIds;
     }
+
     
     public async Task<List<string>> ProcessNbaMarketCataloguesAsync(string eventId)
     {
@@ -223,7 +246,15 @@ public class MarketAutomationService
                             Timezone = catalogue.Event.Timezone,
                             OpenDate = catalogue.Event.OpenDate
                         }
-                        : null
+                        : null,
+                    Runners = catalogue.Runners != null
+                        ? catalogue.Runners.Select(runner => new RunnerDescription
+                        {
+                            RunnerId = runner.RunnerId,
+                            RunnerName = runner.RunnerName,
+                            Metadata = runner.Metadata
+                        }).ToList()
+                        : new List<RunnerDescription>()
                 })
                 .Where(catalogue => catalogue.Event != null)
                 .ToList();

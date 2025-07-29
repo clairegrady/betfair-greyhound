@@ -17,6 +17,22 @@ public class ListMarketCatalogueDb
 
         foreach (var marketCatalogue in marketCatalogues)
         {
+            Console.WriteLine($"MarketId: {marketCatalogue.MarketId}, MarketName: {marketCatalogue.MarketName}");
+
+            if (marketCatalogue.Runners != null && marketCatalogue.Runners.Any())
+            {
+                Console.WriteLine($"Runners for MarketId {marketCatalogue.MarketId}:");
+                foreach (var runner in marketCatalogue.Runners)
+                {
+                    Console.WriteLine($" - RunnerId: {runner.RunnerId}, Name: {runner.RunnerName}, Form: {runner.Metadata?.Form}");
+                }
+            }
+            else
+            {
+                Console.WriteLine("No runners found for this market.");
+            }
+
+
             using var command = connection.CreateCommand();
             command.CommandText = @"
                 INSERT OR REPLACE INTO MarketCatalogue 

@@ -41,7 +41,7 @@ public class MarketService : IMarketService
             {
                 filter = filter,
                 maxResults = 1000,
-                marketProjection = new[] { "COMPETITION", "EVENT", "EVENT_TYPE" }
+                marketProjection = new[] { "COMPETITION", "EVENT", "EVENT_TYPE", "RUNNER_DESCRIPTION", "RUNNER_METADATA" }
             },
             id = 1
         };

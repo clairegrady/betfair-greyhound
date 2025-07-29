@@ -93,87 +93,91 @@ public class GreyhoundAutomationService
             Console.WriteLine("Failed to deserialize market book or no market book data found.");
         }
     }
-     public async Task<List<MarketDetails>> ProcessGreyhoundMarketCataloguesAsync(string eventId = null, string competitionId = null)
+
+    public async Task<List<MarketCatalogue>> ProcessGreyhoundMarketCataloguesAsync(string eventId = null, string competitionId = null)
+{
+    var marketCatalogueJson = await _marketApiService.ListMarketCatalogue(eventId: eventId, competitionId: competitionId);
+    var marketCatalogueApiResponse = JsonSerializer.Deserialize<ApiResponse<MarketCatalogue>>(marketCatalogueJson);
+
+    if (marketCatalogueApiResponse == null)
     {
-        var marketCatalogueJson = await _marketApiService.ListMarketCatalogue(eventId: eventId, competitionId: competitionId);
-        var marketCatalogueApiResponse = JsonSerializer.Deserialize<ApiResponse<MarketCatalogue>>(marketCatalogueJson);
-    
-        if (marketCatalogueApiResponse == null)
-        {
-            Console.WriteLine("Failed to deserialize the market catalogue JSON.");
-        }
-        else
-        {
-            Console.WriteLine($"Deserialized Market Catalogue Result Count: {marketCatalogueApiResponse.Result?.Count()}");
-        }
-    
-        var filteredMarketIds = new List<MarketDetails>();
-    
-        if (marketCatalogueApiResponse?.Result != null && marketCatalogueApiResponse.Result.Any())
-        {
-            var marketCatalogues = marketCatalogueApiResponse.Result
-                .Where(catalogue => catalogue.Event != null) 
-                .Select(catalogue => new MarketCatalogue
-                {
-                    MarketId = catalogue.MarketId,
-                    MarketName = catalogue.MarketName,
-                    TotalMatched = catalogue.TotalMatched,
-                    EventType = catalogue.EventType != null 
-                        ? new EventType
-                        {
-                            Id = catalogue.EventType.Id,
-                            Name = catalogue.EventType.Name
-                        }
-                        : null,
-    
-                    Competition = catalogue.Competition != null 
-                        ? new Competition
-                        {
-                            Id = catalogue.Competition.Id,
-                            Name = catalogue.Competition.Name
-                        }
-                        : null,
-    
-                    Event = catalogue.Event != null 
-                        ? new Event
-                        {
-                            Id = catalogue.Event.Id,
-                            Name = catalogue.Event.Name,
-                            CountryCode = catalogue.Event.CountryCode,
-                            Timezone = catalogue.Event.Timezone,
-                            OpenDate = catalogue.Event.OpenDate
-                        }
-                        : null
-                })
-                .Where(catalogue => catalogue.Event != null)
-                .ToList();
-            
-            var today = DateTime.Now.Date;
-            var tomorrow = today.AddDays(1);
-            filteredMarketIds = marketCatalogues
-                .Where(catalogue => catalogue.Event.Id.Equals(eventId, StringComparison.OrdinalIgnoreCase)
-                                    && Regex.IsMatch(catalogue.MarketName, @"^R\d{1,2}")                                    && catalogue.Event.OpenDate.Value.ToLocalTime().Date == today)
-                .Select(catalogue => new MarketDetails
-                {
-                    MarketId = catalogue.MarketId,
-                    MarketName = catalogue.MarketName
-                })
-                .ToList();
-            
-            if (marketCatalogues.Any())
-            {
-                await _listMarketCatalogueDb.InsertMarketsIntoDatabase(marketCatalogues);
-            }
-            else
-            {
-                Console.WriteLine("No market catalogues to insert.");
-            }
-        }
-        else
-        {
-            Console.WriteLine("Failed to deserialize market catalogues or no market catalogues found.");
-        }
-        return filteredMarketIds;
+        Console.WriteLine("Failed to deserialize the market catalogue JSON.");
+        return new List<MarketCatalogue>();
     }
+    else
+    {
+        Console.WriteLine($"Deserialized Market Catalogue Result Count: {marketCatalogueApiResponse.Result?.Count()}");
+    }
+
+    if (marketCatalogueApiResponse?.Result == null || !marketCatalogueApiResponse.Result.Any())
+    {
+        Console.WriteLine("No market catalogues found.");
+        return new List<MarketCatalogue>();
+    }
+
+    var marketCatalogues = marketCatalogueApiResponse.Result
+        .Where(catalogue => catalogue.Event != null)
+        .Select(catalogue => new MarketCatalogue
+        {
+            MarketId = catalogue.MarketId,
+            MarketName = catalogue.MarketName,
+            TotalMatched = catalogue.TotalMatched,
+            EventType = catalogue.EventType != null
+                ? new EventType
+                {
+                    Id = catalogue.EventType.Id,
+                    Name = catalogue.EventType.Name
+                }
+                : null,
+            Competition = catalogue.Competition != null
+                ? new Competition
+                {
+                    Id = catalogue.Competition.Id,
+                    Name = catalogue.Competition.Name
+                }
+                : null,
+            Event = catalogue.Event != null
+                ? new Event
+                {
+                    Id = catalogue.Event.Id,
+                    Name = catalogue.Event.Name,
+                    CountryCode = catalogue.Event.CountryCode,
+                    Timezone = catalogue.Event.Timezone,
+                    OpenDate = catalogue.Event.OpenDate
+                }
+                : null,
+            Runners = catalogue.Runners != null
+                ? catalogue.Runners.Select(runner => new RunnerDescription
+                {
+                    RunnerId = runner.RunnerId,
+                    RunnerName = runner.RunnerName,
+                    Metadata = runner.Metadata
+                }).ToList()
+                : new List<RunnerDescription>()
+        })
+        .Where(catalogue => catalogue.Event != null)
+        .ToList();
+
+    var today = DateTime.Now.Date;
+
+    var filteredMarketCatalogues = marketCatalogues
+        .Where(catalogue =>
+            catalogue.Event.Id.Equals(eventId, StringComparison.OrdinalIgnoreCase) &&
+            Regex.IsMatch(catalogue.MarketName, @"^R\d{1,2}") &&
+            catalogue.Event.OpenDate.HasValue &&
+            catalogue.Event.OpenDate.Value.ToLocalTime().Date == today)
+        .ToList();
+
+    if (filteredMarketCatalogues.Any())
+    {
+        await _listMarketCatalogueDb.InsertMarketsIntoDatabase(filteredMarketCatalogues);
+    }
+    else
+    {
+        Console.WriteLine("No market catalogues to insert.");
+    }
+
+    return filteredMarketCatalogues;
+}
 
 }

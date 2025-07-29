@@ -55,33 +55,6 @@ namespace Betfair.Models.Market
         [JsonPropertyName("runners")]
         public List<Runner> Runners { get; set; }
     }
-
-    public class Runner
-    {
-        [JsonPropertyName("selectionId")]
-        public int SelectionId { get; set; }
-
-        [JsonPropertyName("handicap")]
-        public double? Handicap { get; set; }
-
-        [JsonPropertyName("status")]
-        public string Status { get; set; }
-
-        [JsonPropertyName("lastPriceTraded")]
-        public double? LastPriceTraded { get; set; }
-
-        [JsonPropertyName("totalMatched")]
-        public double? TotalMatched { get; set; }
-        
-        [JsonPropertyName(("event"))]
-        public Event.Event Event { get; set; }
-
-        [JsonPropertyName("ex")]
-        public Exchange Exchange { get; set; } // Ensure that the "ex" field maps to this property
-    }
-
-
-
     public class Exchange
     {
         [JsonPropertyName("availableToBack")]

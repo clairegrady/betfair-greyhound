@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Betfair.Models.Market;
 
@@ -189,6 +190,79 @@ public class MarketBookDb
 
     await transaction.CommitAsync();
 }
+
+   public async Task InsertHorseMarketBooksIntoDatabase(List<MarketBook> marketBooks)
+{
+    using var connection = new SqliteConnection(_connectionString);
+    await connection.OpenAsync();
+    using var transaction = await connection.BeginTransactionAsync();
+
+    foreach (var marketBook in marketBooks)
+    {
+        var marketId = marketBook.MarketId;
+        var marketInfo = await GetMarketNameAndEventNameByMarketId(connection, marketId);
+        Console.WriteLine($"Market Id: {marketId}   Market Name: {marketInfo?.MarketName ?? "Unknown"}");
+
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+            INSERT INTO HorseMarketBook 
+            (MarketId, MarketName, SelectionId, Status, PriceType, Price, Size, Metadata) 
+            VALUES 
+            ($MarketId, $MarketName, $SelectionId, $Status, $PriceType, $Price, $Size, $Metadata)";
+
+        foreach (var runner in marketBook.Runners)
+        {
+            var selectionId = runner.SelectionId;
+            var status = runner.Status;
+
+            // Serialize metadata dictionary to JSON string (or null)
+            string? metadataJson = runner.Description?.Metadata != null
+                ? JsonSerializer.Serialize(runner.Description.Metadata)
+                : null;
+
+            // Insert back prices
+            if (runner.Exchange?.AvailableToBack != null)
+            {
+                foreach (var back in runner.Exchange.AvailableToBack)
+                {
+                    command.Parameters.Clear();
+                    command.Parameters.AddWithValue("$MarketId", marketId);
+                    command.Parameters.AddWithValue("$MarketName", marketInfo?.MarketName ?? (object)DBNull.Value);
+                    command.Parameters.AddWithValue("$SelectionId", selectionId);
+                    command.Parameters.AddWithValue("$Status", status ?? (object)DBNull.Value);
+                    command.Parameters.AddWithValue("$PriceType", "AvailableToBack");
+                    command.Parameters.AddWithValue("$Price", back.Price ?? (object)DBNull.Value);
+                    command.Parameters.AddWithValue("$Size", back.Size ?? (object)DBNull.Value);
+                    command.Parameters.AddWithValue("$Metadata", metadataJson ?? (object)DBNull.Value);
+
+                    await command.ExecuteNonQueryAsync();
+                }
+            }
+
+            // Insert lay prices
+            if (runner.Exchange?.AvailableToLay != null)
+            {
+                foreach (var lay in runner.Exchange.AvailableToLay)
+                {
+                    command.Parameters.Clear();
+                    command.Parameters.AddWithValue("$MarketId", marketId);
+                    command.Parameters.AddWithValue("$MarketName", marketInfo?.MarketName ?? (object)DBNull.Value);
+                    command.Parameters.AddWithValue("$SelectionId", selectionId);
+                    command.Parameters.AddWithValue("$Status", status ?? (object)DBNull.Value);
+                    command.Parameters.AddWithValue("$PriceType", "AvailableToLay");
+                    command.Parameters.AddWithValue("$Price", lay.Price ?? (object)DBNull.Value);
+                    command.Parameters.AddWithValue("$Size", lay.Size ?? (object)DBNull.Value);
+                    command.Parameters.AddWithValue("$Metadata", metadataJson ?? (object)DBNull.Value);
+
+                    await command.ExecuteNonQueryAsync();
+                }
+            }
+        }
+    }
+
+    await transaction.CommitAsync();
+}
+
 
     private async Task<MarketInfo> GetMarketNameAndEventNameByMarketId(SqliteConnection connection, string marketId)
     {

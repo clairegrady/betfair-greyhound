@@ -28,11 +28,8 @@ venv/
 *.dll
 
 # Ignore specific directories inside historical-data
-historical-data/extracted/
-historical-data/jsonl_files/
-historical-data/processed/
-historical-data/raw/
-
+historical-data/
+BASIC/
 
 # Compressed files
 *.tar

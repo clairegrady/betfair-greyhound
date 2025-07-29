@@ -84,10 +84,12 @@ builder.Services.AddScoped<CompetitionAutomationService>();
 builder.Services.AddScoped<MarketAutomationService>();
 builder.Services.AddScoped<EventAutomationService>();
 builder.Services.AddScoped<GreyhoundAutomationService>();
+builder.Services.AddScoped<HorseRacingAutomationService>();
 
 // Register hosted services
 //builder.Services.AddHostedService<BetfairAutomationService>();
-builder.Services.AddHostedService<GreyhoundStartupService>();
+builder.Services.AddHostedService<HorseRacingStartupService>();
+//builder.Services.AddHostedService<GreyhoundAutomationService>();
 
 builder.Services.AddScoped<DatabaseService>(provider => new DatabaseService(connectionString));
 

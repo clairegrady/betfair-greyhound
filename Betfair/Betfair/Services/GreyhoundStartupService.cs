@@ -2,6 +2,7 @@ using Betfair.AutomationServices;
 using Betfair.Handlers;
 using Betfair.Models.Data;
 using Betfair.Models.Event;
+using Betfair.Models.Market;
 using Betfair.Services.Account;
 using Betfair.Services.HistoricalData;
 
@@ -42,13 +43,18 @@ public class GreyhoundStartupService : BackgroundService
         
         while (!stoppingToken.IsCancellationRequested)
         {
-            //_tarBz2Extractor.ProcessFolder("/Users/clairegrady/Downloads/BASIC", "/Users/clairegrady/Desktop/Betfair");
             
             var eventList = await _eventAutomationService.FetchAndStoreListOfEventsAsync(new List<string> {"4339"});
             var auEventList = eventList.Where(e => e.Event.CountryCode == "AU").ToList();
 
             var eventString = ConvertEventListToStrings(auEventList);
             var marketCatalogues = await _greyhoundAutomationService.ProcessGreyhoundMarketCataloguesAsync(eventString.First());
+
+            foreach (var ev in eventString)
+            {
+                var result = await _greyhoundAutomationService.ProcessGreyhoundMarketCataloguesAsync(ev);
+                marketCatalogues.AddRange(result);
+            }
 
             var marketIds = marketCatalogues
                 .Select(market => market.MarketId)  

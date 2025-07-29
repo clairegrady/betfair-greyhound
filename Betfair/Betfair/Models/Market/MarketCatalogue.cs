@@ -18,7 +18,10 @@ public class MarketCatalogue
 
     [JsonPropertyName("competition")]
     public Competition.Competition Competition { get; set; }
-    
+
     [JsonPropertyName("event")]
     public Event.Event Event { get; set; }
+
+    [JsonPropertyName("runners")]
+    public List<RunnerDescription> Runners { get; set; }
 }

@@ -101,6 +101,8 @@ public class MarketProcessor : IMarketProcessor
      public async Task<List<MarketDetails>> ProcessMarketCataloguesAsync(string eventId = null, string competitionId = null)
     {
         var marketCatalogueJson = await _marketApiService.ListMarketCatalogue(eventId: eventId, competitionId: competitionId);
+        Console.WriteLine("Raw Market Catalogue JSON:");
+        Console.WriteLine(marketCatalogueJson);
         var marketCatalogueApiResponse = JsonSerializer.Deserialize<ApiResponse<MarketCatalogue>>(marketCatalogueJson);
 
         if (marketCatalogueApiResponse == null)
@@ -148,7 +150,16 @@ public class MarketProcessor : IMarketProcessor
                             Timezone = catalogue.Event.Timezone,
                             OpenDate = catalogue.Event.OpenDate
                         }
-                        : null
+                        : null,
+                    Runners = catalogue.Runners != null
+                        ? catalogue.Runners.Select(runner => new RunnerDescription
+                        {
+                            RunnerId = runner.RunnerId,
+                            RunnerName = runner.RunnerName,
+                            Metadata = runner.Metadata
+                        }).ToList()
+                        : new List<RunnerDescription>()
+
                 })
                 .Where(catalogue => catalogue.Event != null)
                 .ToList();
@@ -222,7 +233,15 @@ public class MarketProcessor : IMarketProcessor
                             Timezone = catalogue.Event.Timezone,
                             OpenDate = catalogue.Event.OpenDate
                         }
-                        : null
+                        : null,
+                    Runners = catalogue.Runners != null
+                        ? catalogue.Runners.Select(runner => new RunnerDescription
+                        {
+                            RunnerId = runner.RunnerId,
+                            RunnerName = runner.RunnerName,
+                            Metadata = runner.Metadata
+                        }).ToList()
+                        : new List<RunnerDescription>()
                 })
                 .Where(catalogue => catalogue.Event != null)
                 .ToList();
