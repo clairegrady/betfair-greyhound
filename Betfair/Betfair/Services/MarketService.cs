@@ -144,12 +144,12 @@ public class MarketService : IMarketService
             }
             else
             {
-                Console.WriteLine("No market profit and loss data found.");
+                //Console.WriteLine("No market profit and loss data found.");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Failed to fetch and store Market Profit and Loss data: {ex.Message}");
+            //Console.WriteLine($"Failed to fetch and store Market Profit and Loss data: {ex.Message}");
         }
     }
 }

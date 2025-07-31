@@ -78,7 +78,7 @@ public class HistoricalDataService : IHistoricalDataService
         };
 
         _httpClient.DefaultRequestHeaders.Add("ssoid", _sessionToken);
-        Console.WriteLine(_sessionToken);
+        //Console.WriteLine(_sessionToken);
         var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
         var response = await _httpClient.PostAsync(_settings.GetCollectionOptionsEndpoint, content);
         response.EnsureSuccessStatusCode();
@@ -117,7 +117,7 @@ public class HistoricalDataService : IHistoricalDataService
         if (!response.IsSuccessStatusCode)
         {
             var errorResponse = await response.Content.ReadAsStringAsync();
-            Console.WriteLine($"Error in response: {errorResponse}");
+            //Console.WriteLine($"Error in response: {errorResponse}");
         }
         return await response.Content.ReadAsStringAsync();
     }
@@ -176,11 +176,11 @@ public class HistoricalDataService : IHistoricalDataService
                 await fileStream.CopyToAsync(fs);
             }
 
-            Console.WriteLine($"Downloaded {fileName}");
+            //Console.WriteLine($"Downloaded {fileName}");
         }
         else
         {
-            Console.WriteLine($"Failed to download {filePath}");
+            //Console.WriteLine($"Failed to download {filePath}");
         }
     }
 

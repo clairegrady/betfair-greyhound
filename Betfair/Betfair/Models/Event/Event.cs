@@ -17,4 +17,7 @@ public class Event
 
     [JsonPropertyName("openDate")]
     public DateTime? OpenDate { get; set; }
+
+    [JsonPropertyName("sport")]
+    public string Sport { get; set; }
 }

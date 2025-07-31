@@ -5,6 +5,7 @@ using Betfair.Models;
 using Betfair.Models.Competition;
 using Betfair.Models.Event;
 using Betfair.Models.Market;
+using Betfair.Models.Runner;
 using Betfair.Services;
 
 namespace Betfair.AutomationServices;
@@ -23,25 +24,25 @@ public class GreyhoundAutomationService
     public async Task ProcessGreyhoundMarketBooksAsync(List<string> marketIds)
     {
         var marketBookJson = await _marketApiService.ListMarketBookAsync(marketIds);
-        var marketBookApiResponse = JsonSerializer.Deserialize<ApiResponse<MarketBook>>(marketBookJson);
-       if (marketBookApiResponse?.Result?.Any() == true) 
+        var marketBookApiResponse = JsonSerializer.Deserialize<ApiResponse<MarketBook<ApiRunner>>>(marketBookJson);
+        if (marketBookApiResponse?.Result?.Any() == true)
         {
             var marketBooks = marketBookApiResponse.Result
-                .Where(book => book.MarketId != null) 
-                .Select(book => new MarketBook
+                .Where(book => book.MarketId != null)
+                .Select(book => new MarketBook<ApiRunner> // You need to specify <ApiRunner> here as well
                 {
                     MarketId = book.MarketId,
                     Status = book.Status,
                     BetDelay = book.BetDelay,
                     LastMatchTime = book.LastMatchTime,
                     TotalMatched = book.TotalMatched,
-                    Runners = book.Runners?.Select(runner => new Runner
+                    Runners = book.Runners?.Select(runner => new ApiRunner
                     {
                         SelectionId = runner.SelectionId,
                         Status = runner.Status,
                         LastPriceTraded = runner.LastPriceTraded,
                         TotalMatched = runner.TotalMatched,
-                        
+
                         Exchange = runner.Exchange != null
                             ? new Exchange
                             {
@@ -49,22 +50,22 @@ public class GreyhoundAutomationService
                                 {
                                     Price = p.Price,
                                     Size = p.Size
-                                }).ToList() ?? new List<PriceSize>(), 
-                                
+                                }).ToList() ?? new List<PriceSize>(),
+
                                 AvailableToLay = runner.Exchange.AvailableToLay?.Select(p => new PriceSize
                                 {
                                     Price = p.Price,
                                     Size = p.Size
                                 }).ToList() ?? new List<PriceSize>(),
-                                
+
                                 TradedVolume = runner.Exchange.TradedVolume?.Select(p => new PriceSize
                                 {
                                     Price = p.Price,
                                     Size = p.Size
-                                }).ToList() ?? new List<PriceSize>() 
+                                }).ToList() ?? new List<PriceSize>()
                             }
                             : null,
-                    }).ToList() ?? new List<Runner>() 
+                    }).ToList() ?? new List<ApiRunner>()
                 })
                 .ToList();
             
@@ -72,10 +73,10 @@ public class GreyhoundAutomationService
             // {
             //     foreach (var runner in book.Runners)
             //     {
-            //         Console.WriteLine($"Runner {runner.SelectionId}:");
-            //         Console.WriteLine($"  Available To Back: {string.Join(", ", runner.Exchange.AvailableToBack.Select(x => $"Price: {x.Price}, Size: {x.Size}"))}");
-            //         Console.WriteLine($"  Available To Lay: {string.Join(", ", runner.Exchange.AvailableToLay.Select(x => $"Price: {x.Price}, Size: {x.Size}"))}");
-            //         Console.WriteLine($"  Traded Volume: {string.Join(", ", runner.Exchange.TradedVolume.Select(x => $"Price: {x.Price}, Size: {x.Size}"))}");
+            //         //Console.WriteLine($"Runner {runner.SelectionId}:");
+            //         //Console.WriteLine($"  Available To Back: {string.Join(", ", runner.Exchange.AvailableToBack.Select(x => $"Price: {x.Price}, Size: {x.Size}"))}");
+            //         //Console.WriteLine($"  Available To Lay: {string.Join(", ", runner.Exchange.AvailableToLay.Select(x => $"Price: {x.Price}, Size: {x.Size}"))}");
+            //         //Console.WriteLine($"  Traded Volume: {string.Join(", ", runner.Exchange.TradedVolume.Select(x => $"Price: {x.Price}, Size: {x.Size}"))}");
             //     }
             // }
             
@@ -85,12 +86,12 @@ public class GreyhoundAutomationService
             }
             else
             {
-                Console.WriteLine("No market books to insert.");
+                //Console.WriteLine("No market books to insert.");
             }
         }
         else
         {
-            Console.WriteLine("Failed to deserialize market book or no market book data found.");
+            //Console.WriteLine("Failed to deserialize market book or no market book data found.");
         }
     }
 
@@ -101,17 +102,17 @@ public class GreyhoundAutomationService
 
     if (marketCatalogueApiResponse == null)
     {
-        Console.WriteLine("Failed to deserialize the market catalogue JSON.");
+        //Console.WriteLine("Failed to deserialize the market catalogue JSON.");
         return new List<MarketCatalogue>();
     }
     else
     {
-        Console.WriteLine($"Deserialized Market Catalogue Result Count: {marketCatalogueApiResponse.Result?.Count()}");
+        //Console.WriteLine($"Deserialized Market Catalogue Result Count: {marketCatalogueApiResponse.Result?.Count()}");
     }
 
     if (marketCatalogueApiResponse?.Result == null || !marketCatalogueApiResponse.Result.Any())
     {
-        Console.WriteLine("No market catalogues found.");
+        //Console.WriteLine("No market catalogues found.");
         return new List<MarketCatalogue>();
     }
 
@@ -149,7 +150,7 @@ public class GreyhoundAutomationService
             Runners = catalogue.Runners != null
                 ? catalogue.Runners.Select(runner => new RunnerDescription
                 {
-                    RunnerId = runner.RunnerId,
+                    SelectionId = runner.SelectionId,
                     RunnerName = runner.RunnerName,
                     Metadata = runner.Metadata
                 }).ToList()
@@ -174,7 +175,7 @@ public class GreyhoundAutomationService
     }
     else
     {
-        Console.WriteLine("No market catalogues to insert.");
+        //Console.WriteLine("No market catalogues to insert.");
     }
 
     return filteredMarketCatalogues;

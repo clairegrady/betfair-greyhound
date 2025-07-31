@@ -64,11 +64,11 @@ public class GreyhoundBackgroundWorker : BackgroundService
             var dataPackageList = await _historicalDataService.ListDataPackagesAsync();
             var filteredCollectionOptions = await _historicalDataService.GetCollectionOptionsAsync(request.Sport, request.Plan, request.FromDay, request.FromMonth, request.FromYear, request.ToDay, request.ToMonth, request.ToYear, request.MarketTypes, request.Countries, request.FileTypes);
 
-            Console.WriteLine($"Data Package List: {dataPackageList}");
+            //Console.WriteLine($"Data Package List: {dataPackageList}");
             var filteredAdvDataSizeOptions = await _historicalDataService.GetDataSizeAsync(request);
-            Console.WriteLine($"Filtered Collection Options: {filteredCollectionOptions}");
+            //Console.WriteLine($"Filtered Collection Options: {filteredCollectionOptions}");
 
-            Console.WriteLine($"Filtered Adv Data Size Options: {filteredAdvDataSizeOptions}");
+            //Console.WriteLine($"Filtered Adv Data Size Options: {filteredAdvDataSizeOptions}");
 
             var accountFundsJson = await _accountService.GetAccountFundsAsync();
             DisplayHandler.DisplayAccountData(accountFundsJson);

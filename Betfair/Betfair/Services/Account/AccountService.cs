@@ -38,7 +38,7 @@ public class AccountService
         if (!response.IsSuccessStatusCode)
         {
             var errorContent = await response.Content.ReadAsStringAsync();
-            Console.WriteLine($"Failed to fetch account funds: {errorContent}");
+            //Console.WriteLine($"Failed to fetch account funds: {errorContent}");
             throw new HttpRequestException($"Error fetching account funds: {response.StatusCode} - {errorContent}");
         }
 
@@ -66,7 +66,7 @@ public class AccountService
         if (!response.IsSuccessStatusCode)
         {
             var errorContent = await response.Content.ReadAsStringAsync();
-            Console.WriteLine($"Failed to fetch account details: {errorContent}");
+            //Console.WriteLine($"Failed to fetch account details: {errorContent}");
             throw new HttpRequestException($"Error fetching account details: {response.StatusCode} - {errorContent}");
         }
 
@@ -102,7 +102,7 @@ public class AccountService
         if (!response.IsSuccessStatusCode)
         {
             var errorContent = await response.Content.ReadAsStringAsync();
-            Console.WriteLine($"Failed to fetch account statement: {errorContent}");
+            //Console.WriteLine($"Failed to fetch account statement: {errorContent}");
             throw new HttpRequestException($"Error fetching account statement: {response.StatusCode} - {errorContent}");
         }
 

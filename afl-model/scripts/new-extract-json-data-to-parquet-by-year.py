@@ -86,7 +86,7 @@ def extract_data_from_file(file_path: Path) -> Tuple[List[Dict], List[Dict]]:
 
     return markets, runners_def
 
-def process_all_files(json_root: Path, output_dir: Path):
+def process_all_files(json_root: Path, output_dir: Path, years_to_process: List[str] = None):
     output_dir.mkdir(parents=True, exist_ok=True)
 
     for year_dir in sorted(json_root.iterdir()):
@@ -94,10 +94,14 @@ def process_all_files(json_root: Path, output_dir: Path):
             continue
 
         year_str = year_dir.name
+
+        # 👉 Skip if we're not targeting this year
+        if years_to_process is not None and year_str not in years_to_process:
+            continue
+
         markets_file = output_dir / f"markets_{year_str}.parquet"
         runners_file = output_dir / f"runners_{year_str}.parquet"
 
-        # Skip if both parquet files exist already
         if markets_file.exists() and runners_file.exists():
             print(f"⏭️ Skipping year {year_str} as output files already exist.")
             continue
@@ -110,7 +114,6 @@ def process_all_files(json_root: Path, output_dir: Path):
             for day_dir in sorted(month_dir.iterdir()):
                 if not day_dir.is_dir():
                     continue
-
                 for json_file in sorted(day_dir.iterdir()):
                     if not json_file.is_file():
                         continue
@@ -122,11 +125,8 @@ def process_all_files(json_root: Path, output_dir: Path):
             markets_df = pd.DataFrame(markets_year)
             runners_df = pd.DataFrame(runners_year)
 
-            # Convert BSP column to numeric
             if "bsp" in runners_df.columns:
                 runners_df["bsp"] = pd.to_numeric(runners_df["bsp"], errors="coerce")
-
-            # Convert ltp_pt to readable datetime if it exists
             if "ltp_pt" in runners_df.columns:
                 runners_df["ltp_dt"] = pd.to_datetime(runners_df["ltp_pt"], unit="ms", errors="coerce")
 
@@ -139,7 +139,10 @@ def process_all_files(json_root: Path, output_dir: Path):
 
     print("🏁 Extraction complete.")
 
+
 if __name__ == "__main__":
     json_root_path = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/extracted-horseracing/BASIC/decompressed_files")
     output_path = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/horseracing_parquet_by_year")
-    process_all_files(json_root_path, output_path)
+
+    years = ["2021", "2024"]
+    process_all_files(json_root_path, output_path, years_to_process=years)

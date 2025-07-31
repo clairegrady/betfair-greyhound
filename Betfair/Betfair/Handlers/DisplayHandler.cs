@@ -30,20 +30,20 @@ public class DisplayHandler
             int maxEventNameLength = eventName.Length > 20 ? eventName.Length : 20;
             string formatString = $"{{0,-{maxEventNameLength}}} | {{1,-15}} | {{2,-18}} | {{3,-12}} | {{4,-11}} | {{5,-7}} | {{6,-15}} | {{7,-19}} | {{8,-19}} | {{9,-19}} | {{10,-19}}";
     
-            Console.WriteLine(string.Format(formatString, eventName, marketId, marketName, totalMatched, selectionId, status, lastPriceTraded, availableToBackPrice, availableToBackSize, availableToLayPrice, availableToLaySize));
+            //Console.WriteLine(string.Format(formatString, eventName, marketId, marketName, totalMatched, selectionId, status, lastPriceTraded, availableToBackPrice, availableToBackSize, availableToLayPrice, availableToLaySize));
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error displaying row: {ex.Message}");
+            //Console.WriteLine($"Error displaying row: {ex.Message}");
         }
     }
     public void DisplayHeader()
     {
-        Console.WriteLine("EventName                          | MarketId       | MarketName        | TotalMatched | SelectionId | Status | LastPriceTraded | AvailableToBackPrice | AvailableToBackSize | AvailableToLayPrice |AvailableToLaySize");
+        //Console.WriteLine("EventName                          | MarketId       | MarketName        | TotalMatched | SelectionId | Status | LastPriceTraded | AvailableToBackPrice | AvailableToBackSize | AvailableToLayPrice |AvailableToLaySize");
     }
     public void DisplayFooter()
     {
-        Console.WriteLine(new string('*', 215));
+        //Console.WriteLine(new string('*', 215));
     }
     
     public static void DisplayAccountData(string accountFundsJson)
@@ -62,21 +62,21 @@ public class DisplayHandler
                 var pointsBalance = accountFundsResponse.Result.PointsBalance;
                 var wallet = accountFundsResponse.Result.Wallet;
 
-                Console.WriteLine("--------------------------------------------------------------------------------------------------------------------------");
-                Console.WriteLine("| Available to Bet Balance | Exposure | Retained Commission | Exposure Limit | Discount Rate | Points Balance | Wallet |");
-                Console.WriteLine("--------------------------------------------------------------------------------------------------------------------------");
+                //Console.WriteLine("--------------------------------------------------------------------------------------------------------------------------");
+                //Console.WriteLine("| Available to Bet Balance | Exposure | Retained Commission | Exposure Limit | Discount Rate | Points Balance | Wallet |");
+                //Console.WriteLine("--------------------------------------------------------------------------------------------------------------------------");
 
-                Console.WriteLine($"| {availableToBetBalance,24} | {exposure,8} | {retainedCommission,19} | {exposureLimit,13} | {discountRate,12} | {pointsBalance,14} | {wallet,-6} |");
-                Console.WriteLine("--------------------------------------------------------------------------------------------------------------------------");
+                //Console.WriteLine($"| {availableToBetBalance,24} | {exposure,8} | {retainedCommission,19} | {exposureLimit,13} | {discountRate,12} | {pointsBalance,14} | {wallet,-6} |");
+                //Console.WriteLine("--------------------------------------------------------------------------------------------------------------------------");
             }
             else
             {
-                Console.WriteLine("Error: 'result' property is missing or invalid in the JSON response.");
+                //Console.WriteLine("Error: 'result' property is missing or invalid in the JSON response.");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error displaying account data: {ex.Message}");
+            //Console.WriteLine($"Error displaying account data: {ex.Message}");
         }
     }
 }

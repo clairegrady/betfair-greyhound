@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Betfair.Data;
@@ -56,8 +57,8 @@ public class MarketApiService : IMarketApiService
 
         var jsonResponse = await response.Content.ReadAsStringAsync();
         // Print raw JSON response to console or log
-        Console.WriteLine("Raw Market Catalogue JSON Response:");
-        Console.WriteLine(jsonResponse);
+        //Console.WriteLine("Raw Market Catalogue JSON Response:");
+        //Console.WriteLine(jsonResponse);
 
         return await response.Content.ReadAsStringAsync(); 
     }
@@ -90,15 +91,18 @@ public class MarketApiService : IMarketApiService
         return await response.Content.ReadAsStringAsync();
     }
 
-    public async Task<string> ListHorseRacingMarketCatalogueAsync(string competitionId = null, string eventId = null)
+    public async Task<string> ListHorseRacingMarketCatalogueAsync(string eventTypeId = null, string eventId = null, DateTime? openDate = null)
     {
         _sessionToken = await _authService.GetSessionTokenAsync();
 
+        var formattedOpenDate = openDate?.ToString("yyyy-MM-ddTHH:mm:ssZ");
+
         var filter = new
         {
-            competitionIds = competitionId != null ? new[] { competitionId } : null,
+            eventTypeIds = eventTypeId != null ? new[] { eventTypeId } : null,
             eventIds = eventId != null ? new[] { eventId } : null,
-            eventTypeIds = new[] { "7" } // 7 is typically Horse Racing in Betfair API
+            openDate = formattedOpenDate,
+            marketTypeCodes = new[] { "WIN", "PLACE" }
         };
 
         var requestBody = new
@@ -108,7 +112,7 @@ public class MarketApiService : IMarketApiService
             @params = new
             {
                 filter = filter,
-                maxResults = 1000,
+                maxResults = 100,
                 marketProjection = new[] { "COMPETITION", "EVENT", "EVENT_TYPE", "RUNNER_DESCRIPTION", "RUNNER_METADATA" }
             },
             id = 1
@@ -122,11 +126,6 @@ public class MarketApiService : IMarketApiService
         response.EnsureSuccessStatusCode();
 
         var jsonResponse = await response.Content.ReadAsStringAsync();
-
-        // Log raw JSON to check metadata fields
-        Console.WriteLine("Raw Horse Racing Market Catalogue JSON Response:");
-        Console.WriteLine(jsonResponse);
-
         return jsonResponse;
     }
      public async Task<string> GetMarketProfitAndLossAsync(List<string> marketIds)
@@ -191,12 +190,12 @@ public class MarketApiService : IMarketApiService
             }
             else
             {
-                Console.WriteLine("No market profit and loss data found.");
+                //Console.WriteLine("No market profit and loss data found.");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Failed to fetch and store Market Profit and Loss data: {ex.Message}");
+            //Console.WriteLine($"Failed to fetch and store Market Profit and Loss data: {ex.Message}");
         }
     }
 }
@@ -208,6 +207,8 @@ public interface IMarketApiService
     Task<string> ListMarketBookAsync(List<string> marketIds);
     Task<string> GetMarketProfitAndLossAsync(List<string> marketIds);
     Task ProcessAndStoreMarketProfitAndLoss(List<string> marketIds);
-    Task<string> ListHorseRacingMarketCatalogueAsync(string competitionId = null, string eventId = null);
+
+    Task<string> ListHorseRacingMarketCatalogueAsync(string eventTypeId = null, string eventId = null,
+        DateTime? openDate = null);
 }
 

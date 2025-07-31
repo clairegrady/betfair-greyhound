@@ -57,7 +57,7 @@ public class OrderService : IOrderService
         if (!response.IsSuccessStatusCode)
         {
             var errorContent = await response.Content.ReadAsStringAsync();
-            Console.WriteLine($"Failed to place order: {errorContent}");
+            //Console.WriteLine($"Failed to place order: {errorContent}");
             throw new HttpRequestException($"Error placing order: {response.StatusCode} - {errorContent}");
         }
 
@@ -101,12 +101,12 @@ public class OrderService : IOrderService
         if (!response.IsSuccessStatusCode)
         {
             var errorContent = await response.Content.ReadAsStringAsync();
-            Console.WriteLine($"Failed to cancel order(s): {errorContent}");
+            //Console.WriteLine($"Failed to cancel order(s): {errorContent}");
             throw new HttpRequestException($"Error canceling order(s): {response.StatusCode} - {errorContent}");
         }
 
         var responseContent = await response.Content.ReadAsStringAsync();
-        Console.WriteLine($"Cancel order response: {responseContent}");
+        //Console.WriteLine($"Cancel order response: {responseContent}");
 
         return responseContent;
     }
@@ -145,12 +145,12 @@ public class OrderService : IOrderService
         if (!response.IsSuccessStatusCode)
         {
             var errorContent = await response.Content.ReadAsStringAsync();
-            Console.WriteLine($"Failed to update orders: {errorContent}");
+            //Console.WriteLine($"Failed to update orders: {errorContent}");
             throw new HttpRequestException($"Error updating orders: {response.StatusCode} - {errorContent}");
         }
 
         var responseContent = await response.Content.ReadAsStringAsync();
-        Console.WriteLine($"Update orders response: {responseContent}");
+        //Console.WriteLine($"Update orders response: {responseContent}");
 
         return responseContent;
     }
@@ -192,12 +192,12 @@ public class OrderService : IOrderService
         if (!response.IsSuccessStatusCode)
         {
             var errorContent = await response.Content.ReadAsStringAsync();
-            Console.WriteLine($"Failed to replace orders: {errorContent}");
+            //Console.WriteLine($"Failed to replace orders: {errorContent}");
             throw new HttpRequestException($"Error replacing orders: {response.StatusCode} - {errorContent}");
         }
 
         var responseContent = await response.Content.ReadAsStringAsync();
-        Console.WriteLine($"Replace orders response: {responseContent}");
+        //Console.WriteLine($"Replace orders response: {responseContent}");
 
         return responseContent;
     }

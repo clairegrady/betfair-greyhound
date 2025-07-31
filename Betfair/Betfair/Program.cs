@@ -89,7 +89,6 @@ builder.Services.AddScoped<HorseRacingAutomationService>();
 // Register hosted services
 //builder.Services.AddHostedService<BetfairAutomationService>();
 builder.Services.AddHostedService<HorseRacingStartupService>();
-//builder.Services.AddHostedService<GreyhoundAutomationService>();
 
 builder.Services.AddScoped<DatabaseService>(provider => new DatabaseService(connectionString));
 

@@ -12,37 +12,50 @@ namespace Betfair.Services
         private readonly OrderService _orderService;
         private readonly AccountService _accountService;
         private readonly HistoricalDataService _historicalDataService;
+        private readonly EventAutomationService _eventAutomationService;
 
         public HorseRacingStartupService(
             HorseRacingAutomationService horseRacingAutomationService,
             OrderService orderService,
             AccountService accountService,
-            HistoricalDataService historicalDataService)
+            HistoricalDataService historicalDataService,
+            EventAutomationService eventAutomationService)
         {
             _horseRacingAutomationService = horseRacingAutomationService;
             _orderService = orderService;
             _accountService = accountService;
             _historicalDataService = historicalDataService;
+            _eventAutomationService = eventAutomationService;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                // Fetch and process all current horse racing market catalogues dynamically
-                var marketCatalogues = await _horseRacingAutomationService.GetAndProcessHorseRacingMarketCataloguesAsync();
+                // 1. Fetch and store fresh horse racing events (filter as needed)
+                var eventList = await _eventAutomationService.FetchAndStoreListOfEventsAsync(new List<string> { "4339" }); // horse racing eventTypeId
+                var auEventList = eventList.Where(e => e.Event.CountryCode == "AU").ToList();
 
-                var marketIds = marketCatalogues.Select(m => m.MarketId).ToList();
+                // 2. Convert filtered events to strings (event IDs) for market catalogue fetching
+                var eventStrings = auEventList.Select(e => e.Event.Id).ToList();
+
+                // 3. Fetch market catalogues for each event
+                var allMarketCatalogues = new List<MarketCatalogue>();
+                foreach (var ev in eventStrings)
+                {
+                    var marketCatalogues = await _horseRacingAutomationService.GetAndProcessHorseRacingMarketCataloguesAsync(ev);
+                    allMarketCatalogues.AddRange(marketCatalogues);
+                }
+
+                var marketIds = allMarketCatalogues.Select(m => m.MarketId).ToList();
 
                 if (marketIds.Any())
                 {
-                    // Fetch and process market books for these market IDs
+                    // 4. Fetch and process market books for these market IDs
                     await _horseRacingAutomationService.ProcessHorseMarketBooksAsync(marketIds);
                 }
 
-                // TODO: Add additional logic here, e.g., place orders, check account funds, etc.
-
-                // Wait 2 minutes before the next iteration
+                // Wait before the next iteration
                 await Task.Delay(TimeSpan.FromMinutes(2), stoppingToken);
             }
         }

@@ -54,7 +54,7 @@ public class DatabaseService
     {
         if (marketIds == null || !marketIds.Any())
         {
-            Console.WriteLine("No market IDs provided.");
+            //Console.WriteLine("No market IDs provided.");
             return;
         }
 
@@ -65,7 +65,7 @@ public class DatabaseService
 
         foreach (var marketId in marketIds)
         {
-            Console.WriteLine(new string('*', 215));
+            //Console.WriteLine(new string('*', 215));
             
             const string query = @"
             SELECT 

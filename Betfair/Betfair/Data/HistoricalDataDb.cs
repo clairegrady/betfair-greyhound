@@ -27,7 +27,7 @@ namespace Betfair.Data
             {
                 if (await IsDataExistAsync(connection, "HistoricalDataTable", package.Id, package.Date))
                 {
-                    Console.WriteLine($"Skipping duplicate data for ID: {package.Id}, Date: {package.Date}");
+                    //Console.WriteLine($"Skipping duplicate data for ID: {package.Id}, Date: {package.Date}");
                     continue;
                 }
 

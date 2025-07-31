@@ -1,13 +1,11 @@
 import pandas as pd
-from pathlib import Path
 
-runners_path = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/raw_parquet/runners_2025.parquet")
-df = pd.read_parquet(runners_path)
+# Replace this path with your actual file path
+file_path = '/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/processed/horseracing_cleaned_combined_parquet/runners.parquet'
 
-total = len(df)
-missing = df['ltp'].isna().sum()
-print(f"Total runners: {total:,}")
-print(f"Missing last traded price (ltp): {missing:,} ({100 * missing / total:.2f}%)\n")
+# Load the data
+df = pd.read_parquet(file_path)
 
-print("First few rows with missing last traded price (ltp):")
-print(df[df['ltp'].isnull()][['marketId', 'id', 'ltp']].head(10))
+# Print all column names in the DataFrame
+print("Columns in the dataset:")
+print(df.columns.tolist())

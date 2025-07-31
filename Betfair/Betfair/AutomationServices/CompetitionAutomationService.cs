@@ -36,12 +36,12 @@ public class CompetitionAutomationService
             }
             else
             {
-                Console.WriteLine("No competitions to insert.");
+                //Console.WriteLine("No competitions to insert.");
             }
         }
         else
         {
-            Console.WriteLine("Failed to deserialize competitions.");
+            //Console.WriteLine("Failed to deserialize competitions.");
         }
     }
 }

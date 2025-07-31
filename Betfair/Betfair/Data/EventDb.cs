@@ -29,8 +29,8 @@ public class EventDb
             await command.ExecuteNonQueryAsync();
         }
     }
-    
-    public async Task InsertEventListAsync(List<EventListResult> events)
+
+    public async Task InsertEventListAsync(List<EventListResult> events, string sport)
     {
         using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync();
@@ -39,13 +39,13 @@ public class EventDb
         {
             using var command = connection.CreateCommand();
             command.CommandText = @"
-                INSERT OR REPLACE INTO EventList (
-                    Id, Name, CountryCode, Timezone, OpenDate, MarketCount
-                )
-                VALUES (
-                    $Id, $Name, $CountryCode, $Timezone, $OpenDate, $MarketCount
-                );
-            ";
+            INSERT OR REPLACE INTO EventList (
+                Id, Name, CountryCode, Timezone, OpenDate, MarketCount, Sport
+            )
+            VALUES (
+                $Id, $Name, $CountryCode, $Timezone, $OpenDate, $MarketCount, $Sport
+            );
+        ";
 
             command.Parameters.AddWithValue("$Id", eventResult.Event.Id);
             command.Parameters.AddWithValue("$Name", eventResult.Event.Name);
@@ -53,8 +53,10 @@ public class EventDb
             command.Parameters.AddWithValue("$Timezone", eventResult.Event.Timezone ?? (object)DBNull.Value);
             command.Parameters.AddWithValue("$OpenDate", eventResult.Event.OpenDate);
             command.Parameters.AddWithValue("$MarketCount", eventResult.MarketCount);
+            command.Parameters.AddWithValue("$Sport", sport ?? (object)DBNull.Value);
 
             await command.ExecuteNonQueryAsync();
         }
     }
 }
+

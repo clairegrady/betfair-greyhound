@@ -32,7 +32,7 @@ public class AflBackgroundWorker : BackgroundService
 
             if (!eventIds.Any())
             {
-                Console.WriteLine("No AFL events found.");
+                //Console.WriteLine("No AFL events found.");
                 await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
                 continue;
             }

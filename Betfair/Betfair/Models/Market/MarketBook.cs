@@ -1,11 +1,18 @@
 using System.Text.Json.Serialization;
+using Betfair.Models.Runner;
 
 namespace Betfair.Models.Market
 {
-    public class MarketBook
+    public class MarketBook<TRunner>
     {
         [JsonPropertyName("marketId")]
         public string MarketId { get; set; }
+
+        [JsonPropertyName("marketName")]
+        public string MarketName { get; set; }
+
+        [JsonPropertyName("eventName")]
+        public string EventName { get; set; }
 
         [JsonPropertyName("isMarketDataDelayed")]
         public bool IsMarketDataDelayed { get; set; }
@@ -53,7 +60,7 @@ namespace Betfair.Models.Market
         public long Version { get; set; }
 
         [JsonPropertyName("runners")]
-        public List<Runner> Runners { get; set; }
+        public List<TRunner> Runners { get; set; }
     }
     public class Exchange
     {

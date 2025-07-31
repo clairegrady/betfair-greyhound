@@ -39,12 +39,12 @@ public class EventAutomationService
             }
             else
             {
-                Console.WriteLine("No event types to insert.");
+                //Console.WriteLine("No event types to insert.");
             }
         }
         else
         {
-            Console.WriteLine("Failed to deserialize event types.");
+            //Console.WriteLine("Failed to deserialize event types.");
         }
     }
     public async Task<List<EventListResult>> FetchAndStoreListOfEventsAsync(List<string> eventIds)
@@ -71,18 +71,18 @@ public class EventAutomationService
 
             if (eventList.Any())
             {
-                await _eventDb.InsertEventListAsync(eventList);
+                await _eventDb.InsertEventListAsync(eventList, "Horse Racing");
             }
             else
             {
-                Console.WriteLine("No events to insert.");
+                //Console.WriteLine("No events to insert.");
             }
 
             return eventList;
         }
         else
         {
-            Console.WriteLine("Failed to deserialize event list.");
+            //Console.WriteLine("Failed to deserialize event list.");
             return new List<EventListResult>();
         }
     }

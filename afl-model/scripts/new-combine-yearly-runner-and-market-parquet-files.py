@@ -1,14 +1,16 @@
 import pandas as pd
 from pathlib import Path
+import re
 
-def load_and_combine_parquet_files(base_path: Path, filename: str) -> pd.DataFrame:
+def load_and_combine_parquet_files(base_path: Path, prefix: str) -> pd.DataFrame:
     all_dfs = []
-    for year_dir in sorted(base_path.iterdir()):
-        file_path = year_dir / filename
-        if file_path.exists():
-            df = pd.read_parquet(file_path)
-            df["year"] = year_dir.name  # optionally add year info
-            all_dfs.append(df)
+    for file_path in base_path.glob(f"{prefix}_*.parquet"):
+        year_match = re.search(r'(\d{4})', file_path.name)
+        year = year_match.group(1) if year_match else None
+        df = pd.read_parquet(file_path)
+        if year:
+            df["year"] = int(year)
+        all_dfs.append(df)
     return pd.concat(all_dfs, ignore_index=True)
 
 def save_combined(df: pd.DataFrame, output_path: Path):
@@ -16,19 +18,13 @@ def save_combined(df: pd.DataFrame, output_path: Path):
     df.to_parquet(output_path, index=False)
 
 def main():
-    base_path = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/horseracing_cleaned_parquet")
-    processed_path = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/processed/horseracing_combined_parquet")
+    base_path = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/horseracing_cleaned_parquet_by_year")
+    output_dir = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/processed/horseracing_cleaned_combined_parquet")
 
-    # Combine and save markets
-    markets_df = load_and_combine_parquet_files(base_path, "markets.parquet")
-    save_combined(markets_df, processed_path / "markets.parquet")
-    print(f"Combined markets: {len(markets_df)} rows")
-
-    # Combine and save runners
-    runners_df = load_and_combine_parquet_files(base_path, "runners.parquet")
-    save_combined(runners_df, processed_path / "runners.parquet")
-    print(f"Combined runners: {len(runners_df)} rows")
-
+    for prefix in ["markets", "runners"]:
+        df = load_and_combine_parquet_files(base_path, prefix)
+        save_combined(df, output_dir / f"{prefix}.parquet")
+        print(f"Combined {prefix}: {len(df)} rows")
 
 if __name__ == "__main__":
     main()

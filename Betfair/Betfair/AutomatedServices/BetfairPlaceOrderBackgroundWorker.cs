@@ -63,7 +63,7 @@ public class BetfairPlaceOrderBackgroundWorker : BackgroundService
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error: {ex.Message}");
+                //Console.WriteLine($"Error: {ex.Message}");
             }
             //await _databaseService.DisplayMarketBooks(currentTennisMarketIds);
 

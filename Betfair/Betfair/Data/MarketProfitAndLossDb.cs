@@ -16,7 +16,7 @@ public class MarketProfitAndLossDb
 
         foreach (var marketProfitAndLoss in marketProfitAndLossList)
         {
-            Console.WriteLine($"Processing Market: {marketProfitAndLoss.MarketId}");
+            //Console.WriteLine($"Processing Market: {marketProfitAndLoss.MarketId}");
             
             await InsertMarketProfitAndLoss(connection, marketProfitAndLoss);
 

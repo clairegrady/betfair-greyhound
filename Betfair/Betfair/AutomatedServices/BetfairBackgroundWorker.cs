@@ -28,7 +28,7 @@ public class BetfairBackgroundWorker : BackgroundService
             await _competitionProcessor.ProcessCompetitionsAsync();
             
             var currentNbaMarketIds = await _marketProcessor.ProcessNbaMarketCataloguesAsync("10547864");
-            Console.WriteLine($"Current NBA Market IDs: {string.Join(", ", currentNbaMarketIds)}");
+            //Console.WriteLine($"Current NBA Market IDs: {string.Join(", ", currentNbaMarketIds)}");
             await _marketProcessor.ProcessMarketBooksAsync(currentNbaMarketIds);
 
             await _eventAutomationService.FetchAndStoreEventTypeAsync();
