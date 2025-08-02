@@ -61,7 +61,7 @@ public class EventService : IEventService
         
         var marketFilter = new
         {
-            eventTypeIds = eventTypeIds 
+            eventTypeIds = eventTypeIds,
         };
 
         var requestBody = new

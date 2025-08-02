@@ -1,59 +1,31 @@
-import json
+import pandas as pd
 from pathlib import Path
 
-def load_missing_pairs_from_parquet(parquet_path):
-    import pandas as pd
-    df = pd.read_parquet(parquet_path)
-    missing_df = df[df['lastTradedPrice'].isnull()]
-    # Return list of tuples (marketId, runnerId)
-    return list(missing_df[['marketId', 'runnerId']].itertuples(index=False, name=None))
+# Path to your cleaned runners files
+cleaned_dir = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/horseracing_cleaned_parquet_by_year")
 
-def check_pairs_in_json_files(missing_pairs, json_dir):
-    found_pairs = set()
-    missing_pairs = set(missing_pairs)
+print("\n📊 Percentage of missing `ltp` in runners by year:\n")
 
-    # Recursively iterate all files under json_dir
-    for file in json_dir.rglob('*'):
-        if not file.is_file():
-            continue
+# Find all runners_*.parquet files
+runners_files = sorted(cleaned_dir.glob("runners_*.parquet"))
 
-        with file.open('r', encoding='utf-8') as f:
-            for line in f:
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if obj.get('op') != 'mcm':
-                    continue
-                for market in obj.get('mc', []):
-                    market_id = market.get('id')
-                    for rc in market.get('rc', []):
-                        runner_id = rc.get('id')
-                        ltp = rc.get('ltp')
-                        if (market_id, runner_id) in missing_pairs and ltp is not None:
-                            found_pairs.add((market_id, runner_id))
+if not runners_files:
+    print("❌ No runners_*.parquet files found.")
+else:
+    for file_path in runners_files:
+        try:
+            df = pd.read_parquet(file_path)
 
-                # Early exit optimization if all found
-                if found_pairs == missing_pairs:
-                    return found_pairs, missing_pairs - found_pairs
+            # Check for presence of the 'ltp' column
+            if "ltp" not in df.columns:
+                print(f"⚠️ {file_path.name} has no 'ltp' column.")
+                continue
 
-    return found_pairs, missing_pairs - found_pairs
+            total_rows = len(df)
+            missing_ltp = df["ltp"].isna().sum()
+            percent_missing = (missing_ltp / total_rows) * 100 if total_rows > 0 else 0
 
-if __name__ == '__main__':
-    parquet_path = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/processed/combined/runners.parquet")
-    json_dir = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/extracted/BASIC/decompressed_files")
-
-    missing_pairs = load_missing_pairs_from_parquet(parquet_path)
-    print(f"Checking {len(missing_pairs)} missing pairs against all JSON files in {json_dir}...")
-
-    found, not_found = check_pairs_in_json_files(missing_pairs, json_dir)
-
-    print(f"LTP found for {len(found)} missing pairs")
-    print(f"LTP not found for {len(not_found)} missing pairs")
-
-    if not_found:
-        print("Some missing pairs never found in the scanned files:")
-        for market_id, runner_id in list(not_found)[:20]:  # show first 20
-            print(f"Market {market_id}, Runner {runner_id}")
-
-    print("Done.")
+            year = file_path.stem.split("_")[1]
+            print(f"📅 {year}: {percent_missing:.2f}% missing LTP ({missing_ltp:,}/{total_rows:,})")
+        except Exception as e:
+            print(f"⚠️ Error reading {file_path.name}: {e}")

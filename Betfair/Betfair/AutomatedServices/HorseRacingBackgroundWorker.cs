@@ -1,31 +1,24 @@
 using Betfair.AutomationServices;
+using Betfair.Data;
 using Betfair.Models.Market;
-using Betfair.Services.Account;
-using Betfair.Services.HistoricalData;
-using Microsoft.Extensions.Hosting;
+using Betfair.Models.Event;
 
 namespace Betfair.Services
 {
     public class HorseRacingStartupService : BackgroundService
     {
         private readonly HorseRacingAutomationService _horseRacingAutomationService;
-        private readonly OrderService _orderService;
-        private readonly AccountService _accountService;
-        private readonly HistoricalDataService _historicalDataService;
         private readonly EventAutomationService _eventAutomationService;
+        private readonly EventDb _eventDb;
 
         public HorseRacingStartupService(
             HorseRacingAutomationService horseRacingAutomationService,
-            OrderService orderService,
-            AccountService accountService,
-            HistoricalDataService historicalDataService,
-            EventAutomationService eventAutomationService)
+            EventAutomationService eventAutomationService,
+            EventDb eventDb)
         {
             _horseRacingAutomationService = horseRacingAutomationService;
-            _orderService = orderService;
-            _accountService = accountService;
-            _historicalDataService = historicalDataService;
             _eventAutomationService = eventAutomationService;
+            _eventDb = eventDb;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -44,6 +37,16 @@ namespace Betfair.Services
                 foreach (var ev in eventStrings)
                 {
                     var marketCatalogues = await _horseRacingAutomationService.GetAndProcessHorseRacingMarketCataloguesAsync(ev);
+
+                    // Get eventName from the first MarketCatalogue's Event (if available), or fallback to "Unknown"
+                    var eventName = marketCatalogues.FirstOrDefault()?.Event?.Name ?? "Unknown";
+
+                    Console.WriteLine($"Received {marketCatalogues.Count} market catalogues for event {ev} ({eventName})");
+
+                    await _eventDb.InsertEventMarketsAsync(ev, eventName, marketCatalogues);
+
+                    await _eventDb.UpdateEventListWithMarketIdsAsync();
+
                     allMarketCatalogues.AddRange(marketCatalogues);
                 }
 
