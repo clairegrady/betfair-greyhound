@@ -47,7 +47,7 @@ builder.Services.AddHttpClient<IMarketApiService, MarketApiService>((sp, client)
     return BetfairHttpClientFactory.CreateBetfairHandler(sp);
 });
 
-builder.Services.AddHttpClient<OrderService>((sp, client) =>
+builder.Services.AddHttpClient<IPlaceOrderService, PlaceOrderService>((sp, client) =>
 {
     BetfairHttpClientFactory.ConfigureBetfairClient(client, sp);
 }).ConfigurePrimaryHttpMessageHandler(sp =>

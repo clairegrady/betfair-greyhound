@@ -8,18 +8,18 @@ public class BetfairPlaceOrderBackgroundWorker : BackgroundService
 {
     private readonly CompetitionAutomationService _competitionAutomationService;
     private readonly MarketAutomationService _marketAutomationService;
-    private readonly OrderService _orderService;
+    private readonly PlaceOrderService _placeOrderService;
     private readonly AccountService _accountService;
     
     public BetfairPlaceOrderBackgroundWorker(
         CompetitionAutomationService competitionAutomationService,
         MarketAutomationService marketAutomationService,
-        OrderService orderService, 
+        PlaceOrderService placeOrderService,
         AccountService accountService) 
     {
         _competitionAutomationService = competitionAutomationService;
         _marketAutomationService = marketAutomationService;
-        _orderService = orderService;
+        _placeOrderService = placeOrderService;
         _accountService = accountService;
     }
     

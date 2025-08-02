@@ -381,10 +381,10 @@ public class MarketBookDb
     {
         using var command = connection.CreateCommand();
         command.CommandText = @"
-            SELECT mc.MarketName, el.Name
-            FROM MarketCatalogue mc
-            JOIN EventList el ON mc.EventId = el.Id
-            WHERE mc.MarketId = $MarketId";
+        SELECT MarketName, EventName
+        FROM EventMarkets
+        WHERE MarketId = $MarketId
+        LIMIT 1";
         command.Parameters.AddWithValue("$MarketId", marketId);
 
         using var reader = await command.ExecuteReaderAsync();

@@ -12,19 +12,19 @@ public class GreyhoundStartupService : BackgroundService
 {
     private readonly GreyhoundAutomationService _greyhoundAutomationService;
     private readonly EventAutomationService _eventAutomationService;
-    private readonly OrderService _orderService;
+    private readonly PlaceOrderService _placeOrderService;
     private readonly AccountService _accountService;
     private readonly HistoricalDataService _historicalDataService;
     public GreyhoundStartupService(
         GreyhoundAutomationService greyhoundAutomationService,
         EventAutomationService eventAutomationService,
-        OrderService orderService, 
+        PlaceOrderService placeOrderService,
         AccountService accountService, 
         HistoricalDataService historicalDataService) 
     {
         _greyhoundAutomationService = greyhoundAutomationService;
         _eventAutomationService = eventAutomationService;
-        _orderService = orderService;
+        _placeOrderService = placeOrderService;
         _accountService = accountService;
         _historicalDataService = historicalDataService;
     }
