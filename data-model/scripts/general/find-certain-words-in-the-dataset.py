@@ -1,7 +1,7 @@
 import pandas as pd
 from pathlib import Path
 
-base_path = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/horseracing_parquet_by_year")
+base_path = Path("/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/horseracing_parquet_by_year")
 
 def count_keyword_percentages(df, df_name):
     total_rows = len(df)

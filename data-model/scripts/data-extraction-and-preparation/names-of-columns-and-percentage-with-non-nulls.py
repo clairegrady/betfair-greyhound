@@ -1,7 +1,7 @@
 import pandas as pd
 from pathlib import Path
 
-base_path = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/horseracing_parquet_by_year")
+base_path = Path("/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/horseracing_parquet_by_year")
 
 def print_non_null_percentages(df, df_name):
     print(f"\nColumns and non-null percentages in {df_name}:")

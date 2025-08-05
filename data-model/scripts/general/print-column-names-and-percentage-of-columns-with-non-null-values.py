@@ -4,7 +4,7 @@ import json
 from collections import defaultdict
 
 # Setup
-base_path = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/extracted-horseracing/BASIC/decompressed_files")
+base_path = Path("/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/extracted-horseracing/BASIC/decompressed_files")
 years = range(2016, 2026)
 months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 days = range(1, 32)

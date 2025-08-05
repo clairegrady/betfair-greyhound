@@ -2,8 +2,8 @@ import bz2
 from pathlib import Path
 
 # Paths
-BASIC_DIR = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/extracted-horseracing/BASIC")
-OUTPUT_DIR = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/extracted-horseracing/BASIC/decompressed_files")
+BASIC_DIR = Path("/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/extracted-horseracing/BASIC")
+OUTPUT_DIR = Path("/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/extracted-horseracing/BASIC/decompressed_files")
 
 # Find all .bz2 files recursively
 bz2_files = list(BASIC_DIR.rglob("*.bz2"))

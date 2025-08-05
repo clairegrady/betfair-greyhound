@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 
 def main():
     # Update these paths to your actual cleaned parquet files
-    markets_path = "/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/processed/horseracing_cleaned_combined_parquet/markets.parquet"
-    runners_path = "/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/processed/horseracing_cleaned_combined_parquet/runners.parquet"
+    markets_path = "/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/processed/horseracing_cleaned_combined_parquet/markets.parquet"
+    runners_path = "/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/processed/horseracing_cleaned_combined_parquet/runners.parquet"
 
     # Load data
     markets_df = pd.read_parquet(markets_path)

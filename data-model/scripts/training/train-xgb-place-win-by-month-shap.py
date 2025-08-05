@@ -6,7 +6,7 @@ from sklearn.model_selection import train_test_split
 from pathlib import Path
 
 # Directory with combined monthly parquet files
-combined_dir = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/horseracing_cleaned_parquet_by_month")
+combined_dir = Path("/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/horseracing_cleaned_parquet_by_month")
 
 for combined_file in sorted(combined_dir.glob("combined_*.parquet")):
     combined_filename = combined_file.name  # e.g. "combined_2016_Dec.parquet"

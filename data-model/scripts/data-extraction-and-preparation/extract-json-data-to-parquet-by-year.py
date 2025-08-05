@@ -141,8 +141,8 @@ def process_all_files(json_root: Path, output_dir: Path, years_to_process: List[
 
 
 if __name__ == "__main__":
-    json_root_path = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/extracted-horseracing/BASIC/decompressed_files")
-    output_path = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/horseracing_parquet_by_year")
+    json_root_path = Path("/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/extracted-horseracing/BASIC/decompressed_files")
+    output_path = Path("/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/horseracing_parquet_by_year")
 
     years = ["2021", "2024"]
     process_all_files(json_root_path, output_path, years_to_process=years)

@@ -20,8 +20,8 @@ def save_subset(df: pd.DataFrame, output_dir: Path, prefix: str, label: str):
     print(f"Saved {prefix} subset '{label}' with {len(df)} rows")
 
 def main():
-    base_path = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/horseracing_cleaned_parquet_by_year")
-    output_dir = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/processed/horseracing_cleaned_split_by_year")
+    base_path = Path("/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/horseracing_cleaned_parquet_by_year")
+    output_dir = Path("/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/processed/horseracing_cleaned_split_by_year")
 
     for prefix in ["markets", "runners"]:
         df = load_and_combine_parquet_files(base_path, prefix)

@@ -129,16 +129,44 @@ def process_month(month_dir: Path, output_dir: Path, year_str: str):
         if "ltp_pt" in runners_df.columns:
             runners_df["ltp_dt"] = pd.to_datetime(runners_df["ltp_pt"], unit="ms", errors="coerce")
 
-        month_output_dir = output_dir / f"{year_str}-{month_str}"
-        month_output_dir.mkdir(parents=True, exist_ok=True)
-
-        markets_out = month_output_dir / f"markets_{year_str}_{month_str}.parquet"
-        runners_out = month_output_dir / f"runners_{year_str}_{month_str}.parquet"
+        markets_out = output_dir / f"markets_new_{year_str}_{month_str}.parquet"
+        runners_out = output_dir / f"runners_new_{year_str}_{month_str}.parquet"
 
         markets_df.to_parquet(markets_out, index=False)
         runners_df.to_parquet(runners_out, index=False)
-
         print(f"✅ Saved {year_str}-{month_str}: {len(markets_df)} markets, {len(runners_df)} runners")
+
+def combine_monthly_parquets(output_dir: Path, year_str: str):
+    market_parts = sorted(output_dir.glob(f"markets_new_{year_str}_*.parquet"))
+    runner_parts = sorted(output_dir.glob(f"runners_new_{year_str}_*.parquet"))
+
+    if market_parts:
+        df_all = pd.concat([pd.read_parquet(p) for p in market_parts], ignore_index=True)
+        combined_market_file = output_dir / f"markets_{year_str}.parquet"
+        df_all.to_parquet(combined_market_file, index=False)
+        print(f"📦 Combined all markets for {year_str}")
+
+        # Delete monthly market parquet files
+        for p in market_parts:
+            try:
+                p.unlink()
+                print(f"🗑️ Deleted {p.name}")
+            except Exception as e:
+                print(f"❌ Failed to delete {p.name}: {e}")
+
+    if runner_parts:
+        df_all = pd.concat([pd.read_parquet(p) for p in runner_parts], ignore_index=True)
+        combined_runner_file = output_dir / f"runners_{year_str}.parquet"
+        df_all.to_parquet(combined_runner_file, index=False)
+        print(f"📦 Combined all runners for {year_str}")
+
+        # Delete monthly runner parquet files
+        for p in runner_parts:
+            try:
+                p.unlink()
+                print(f"🗑️ Deleted {p.name}")
+            except Exception as e:
+                print(f"❌ Failed to delete {p.name}: {e}")
 
 def process_all_files(json_root: Path, output_dir: Path, years_to_process: List[str]):
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -158,11 +186,13 @@ def process_all_files(json_root: Path, output_dir: Path, years_to_process: List[
             if month_dir.is_dir():
                 process_month(month_dir, output_dir, year_str)
 
+        combine_monthly_parquets(output_dir, year_str)
+
     print("🏁 All processing complete.")
 
 if __name__ == "__main__":
-    json_root_path = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/extracted-horseracing/BASIC/decompressed_files")
-    output_path = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/horseracing_parquet_by_month")
+    json_root_path = Path("/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/extracted-horseracing/BASIC/decompressed_files")
+    output_path = Path("/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/horseracing_parquet_by_year")
 
     years_to_run = [str(y) for y in range(2016, 2026)]  # Process all years 2016-2025
     process_all_files(json_root_path, output_path, years_to_process=years_to_run)

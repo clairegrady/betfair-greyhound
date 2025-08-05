@@ -7,7 +7,7 @@ from sklearn.metrics import accuracy_score, roc_auc_score, precision_score, reca
 from pathlib import Path
 
 # Directory with combined monthly parquet files
-combined_dir = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/horseracing_cleaned_parquet_by_month")
+combined_dir = Path("/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/horseracing_cleaned_parquet_by_month")
 models_dir = combined_dir / "xgb_models"
 metrics_path = combined_dir / "metrics_summary.csv"
 

@@ -18,8 +18,8 @@ def save_combined(df: pd.DataFrame, output_path: Path):
     df.to_parquet(output_path, index=False)
 
 def main():
-    base_path = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/horseracing_cleaned_parquet_by_year")
-    output_dir = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/processed/horseracing_cleaned_combined_parquet")
+    base_path = Path("/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/horseracing_cleaned_parquet_by_year")
+    output_dir = Path("/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/processed/horseracing_cleaned_combined_parquet")
 
     for prefix in ["markets", "runners"]:
         df = load_and_combine_parquet_files(base_path, prefix)

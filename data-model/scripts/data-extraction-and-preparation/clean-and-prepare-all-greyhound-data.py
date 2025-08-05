@@ -3,8 +3,8 @@ from pathlib import Path
 from typing import cast
 
 # CONFIG
-INPUT_ROOT = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/greyhound_parquet")
-OUTPUT_ROOT = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/cleaned_parquet")
+INPUT_ROOT = Path("/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/greyhound_parquet")
+OUTPUT_ROOT = Path("/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/cleaned_parquet")
 OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
 
 dry_run = False  # Set to False to save cleaned files
