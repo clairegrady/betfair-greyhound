@@ -66,7 +66,7 @@ def prepare_data_dask(runners_path: Path, markets_path: Path, output_path: Path)
 
 if __name__ == "__main__":
     prepare_data_dask(
-        Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/processed/horseracing_cleaned_split_by_year/runners_train_2019_23.parquet"),
-        Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/processed/horseracing_cleaned_split_by_year/markets_train_2019_23.parquet"),
-        Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/processed/prepared_horse_data_2019_23_dask.parquet")
+        Path("/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/processed/horseracing_cleaned_split_by_year/runners_train_2019_23.parquet"),
+        Path("/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/processed/horseracing_cleaned_split_by_year/markets_train_2019_23.parquet"),
+        Path("/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/processed/prepared_horse_data_2019_23_dask.parquet")
     )

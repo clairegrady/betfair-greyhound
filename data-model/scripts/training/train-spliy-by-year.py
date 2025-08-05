@@ -9,7 +9,7 @@ import numpy as np
 years = range(2019, 2024)  # 2019 to 2023 inclusive
 
 # Base directory for yearly parquet files
-base_dir = "/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/horseracing_parquet_by_year/"
+base_dir = "/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/horseracing_parquet_by_year/"
 
 # File path templates
 runners_path_template = base_dir + "runners_{}.parquet"

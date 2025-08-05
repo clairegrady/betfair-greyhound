@@ -2,7 +2,7 @@ import pandas as pd
 from pathlib import Path
 
 # Path to your cleaned runners files
-cleaned_dir = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/horseracing_cleaned_parquet_by_year")
+cleaned_dir = Path("/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/horseracing_cleaned_parquet_by_year")
 
 print("\n📊 Percentage of missing `ltp` in runners by year:\n")
 

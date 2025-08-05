@@ -2,8 +2,8 @@ import pandas as pd
 from pathlib import Path
 
 # Define paths
-input_dir = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/horseracing_parquet_by_year")
-output_dir = Path("/Users/clairegrady/RiderProjects/betfair/afl-model/historical-data/horseracing_cleaned_parquet_by_year")
+input_dir = Path("/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/horseracing_parquet_by_year")
+output_dir = Path("/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/horseracing_cleaned_parquet_by_year")
 output_dir.mkdir(parents=True, exist_ok=True)
 
 years = range(2016, 2026)
