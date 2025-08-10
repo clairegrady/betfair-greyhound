@@ -8,9 +8,9 @@ namespace Betfair.AutomationServices;
 public class EventAutomationService
 {
     private readonly IEventService _eventService;
-    private readonly EventDb _eventDb;
+    private readonly EventDb2 _eventDb;
 
-    public EventAutomationService(IEventService eventService, EventDb eventDb)
+    public EventAutomationService(IEventService eventService, EventDb2 eventDb)
     {
         _eventService = eventService;
         _eventDb = eventDb;

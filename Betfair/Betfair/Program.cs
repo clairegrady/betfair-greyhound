@@ -5,6 +5,7 @@ using Betfair.Handlers;
 using Betfair.Services.Account;
 using Betfair.Services.HistoricalData;
 using Betfair.Settings;
+using Microsoft.AspNetCore.Connections;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Logging.AddConsole();
@@ -75,7 +76,7 @@ builder.Services.AddHttpClient<HistoricalDataService>((sp, client) =>
 builder.Services.AddSingleton(new CompetitionDb(connectionString));
 builder.Services.AddSingleton(new ListMarketCatalogueDb(connectionString));
 builder.Services.AddSingleton(new MarketBookDb(connectionString));
-builder.Services.AddSingleton(new EventDb(connectionString));
+builder.Services.AddSingleton(new EventDb2(connectionString));
 builder.Services.AddSingleton(new MarketProfitAndLossDb(connectionString));
 builder.Services.AddSingleton(new HistoricalDataDb(connectionString));
 
@@ -98,11 +99,34 @@ builder.Services.AddControllers();
 // Add Swagger
 builder.Services.AddSwaggerGen();
 
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
+
 // Initialize SQLite and set provider
 SQLitePCL.Batteries_V2.Init();
 SQLitePCL.raw.SetProvider(new SQLitePCL.SQLite3Provider_e_sqlite3());
 
 var app = builder.Build();
+
+// Ensure the application uses the specified port or logs an error if unavailable
+var port = Environment.GetEnvironmentVariable("PORT") ?? "5173";
+try
+{
+    app.Urls.Add($"http://0.0.0.0:{port}");
+    Console.WriteLine($"Application starting on port {port}.");
+}
+catch (IOException ex) when (ex.InnerException is AddressInUseException)
+{
+    Console.WriteLine($"Error: Port {port} is already in use. Please stop the conflicting process or specify a different port using the PORT environment variable.");
+    Environment.Exit(1); // Exit the application
+}
 
 // Configure Swagger
 app.UseSwagger();
@@ -116,5 +140,5 @@ app.UseHttpsRedirection();
 app.UseRouting();
 app.UseAuthorization();
 app.MapControllers();
-
+app.UseCors();
 app.Run();
