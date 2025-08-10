@@ -2,7 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 def main():
-    # Update these paths to your actual cleaned parquet files
+    # Set paths to cleaned parquet files
     markets_path = "/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/processed/horseracing_cleaned_combined_parquet/markets.parquet"
     runners_path = "/Users/clairegrady/RiderProjects/betfair/data-model/historical-data/processed/horseracing_cleaned_combined_parquet/runners.parquet"
 
@@ -10,30 +10,34 @@ def main():
     markets_df = pd.read_parquet(markets_path)
     runners_df = pd.read_parquet(runners_path)
 
-    # Basic info and stats
-    print("Markets data shape:", markets_df.shape)
-    print("Markets columns:", markets_df.columns.tolist())
-    print("\nMarkets first 5 rows:\n", markets_df.head())
-    print("\nMarkets summary statistics:\n", markets_df.describe())
-    print("\nMarkets missing values:\n", markets_df.isna().sum())
-    print("\nMarkets 'marketType' value counts:\n", markets_df['marketType'].value_counts())
+    # Markets overview
+    print("\n🔍 Markets Data Overview")
+    print("Shape:", markets_df.shape)
+    print("Columns (first 10):", markets_df.columns[:10].tolist())
+    print("\nFirst 10 rows:\n", markets_df.head(10))
+    print("\nSummary stats (first 10 columns):\n", markets_df.describe().iloc[:, :10])
+    print("\nMissing values (first 10 columns):\n", markets_df.isna().sum().head(10))
+    print("\n'marketType' value counts (top 10):\n", markets_df['marketType'].value_counts().head(10))
 
-    print("\nRunners 'status' value counts:\n", runners_df['status'].value_counts())
+    # Runners overview
+    print("\n🏇 Runners 'status' value counts (top 10):\n", runners_df['status'].value_counts().head(10))
 
-    # Histogram of numberOfWinners
-    markets_df['numberOfWinners'].hist()
+    # Plot: numberOfWinners distribution
+    markets_df['numberOfWinners'].hist(bins=20)
     plt.title("Distribution of numberOfWinners")
     plt.xlabel("numberOfWinners")
     plt.ylabel("Frequency")
+    plt.tight_layout()
     plt.show()
 
-    # Describe lastTradedPrice for runners
-    print("\nRunners lastTradedPrice stats:\n", runners_df['lastTradedPrice'].describe())
+    # Runners price stats
+    if 'lastTradedPrice' in runners_df.columns:
+        print("\nRunners 'lastTradedPrice' stats:\n", runners_df['lastTradedPrice'].describe())
+    else:
+        print("\n⚠️ 'lastTradedPrice' column not found in runners data.")
 
-    # Correlation matrix of numeric columns in markets_df
-    numeric_cols = markets_df.select_dtypes(include=['float', 'int'])
-    print("\nMarkets correlation matrix (numeric columns only):\n", numeric_cols.corr())
-
+    # Correlation matrix for numeric market features
+    print("\n📊 Correlation matrix (markets_df numeric columns):\n", markets_df.select_dtypes(include=['float', 'int']).corr().round(2).head(10))
 
 if __name__ == "__main__":
     main()
