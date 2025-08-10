@@ -1,7 +1,9 @@
 using Betfair.AutomationServices;
 using Betfair.Data;
+using Betfair.Handlers;
 using Betfair.Models.Market;
 using Betfair.Models.Event;
+using Betfair.Services.Account;
 
 namespace Betfair.Services
 {
@@ -9,16 +11,19 @@ namespace Betfair.Services
     {
         private readonly HorseRacingAutomationService _horseRacingAutomationService;
         private readonly EventAutomationService _eventAutomationService;
-        private readonly EventDb _eventDb;
+        private readonly EventDb2 _eventDb;
+        private readonly AccountService _accountService;
 
         public HorseRacingStartupService(
             HorseRacingAutomationService horseRacingAutomationService,
             EventAutomationService eventAutomationService,
-            EventDb eventDb)
+            EventDb2 eventDb,
+            AccountService accountService)
         {
             _horseRacingAutomationService = horseRacingAutomationService;
             _eventAutomationService = eventAutomationService;
             _eventDb = eventDb;
+            _accountService = accountService;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -38,12 +43,12 @@ namespace Betfair.Services
                 {
                     var marketCatalogues = await _horseRacingAutomationService.GetAndProcessHorseRacingMarketCataloguesAsync(ev);
 
-                    // Get eventName from the first MarketCatalogue's Event (if available), or fallback to "Unknown"
-                    var eventName = marketCatalogues.FirstOrDefault()?.Event?.Name ?? "Unknown";
-
-                    Console.WriteLine($"Received {marketCatalogues.Count} market catalogues for event {ev} ({eventName})");
-
-                    await _eventDb.InsertEventMarketsAsync(ev, eventName, marketCatalogues);
+                    // Insert all market catalogues for this event, not just the first
+                    foreach (var marketCatalogue in marketCatalogues)
+                    {
+                        var eventName = marketCatalogue.Event?.Name ?? "Unknown";
+                        await _eventDb.InsertEventMarketsAsync(ev, eventName, new List<MarketCatalogue> { marketCatalogue });
+                    }
 
                     await _eventDb.UpdateEventListWithMarketIdsAsync();
 
@@ -57,6 +62,11 @@ namespace Betfair.Services
                     // 4. Fetch and process market books for these market IDs
                     await _horseRacingAutomationService.ProcessHorseMarketBooksAsync(marketIds);
                 }
+
+                var accountFundsJson = await _accountService.GetAccountFundsAsync();
+                Console.WriteLine("##########################################################");
+                Console.WriteLine(accountFundsJson);
+                DisplayHandler.DisplayAccountData(accountFundsJson);
 
                 // Wait before the next iteration
                 await Task.Delay(TimeSpan.FromMinutes(2), stoppingToken);

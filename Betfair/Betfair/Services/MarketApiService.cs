@@ -56,7 +56,7 @@ public class MarketApiService : IMarketApiService
         response.EnsureSuccessStatusCode();
 
         var jsonResponse = await response.Content.ReadAsStringAsync();
-        // Print raw JSON response to console or log
+        // Print raw JSON response to//Console or log
         //Console.WriteLine("Raw Market Catalogue JSON Response:");
         //Console.WriteLine(jsonResponse);
 
@@ -90,44 +90,60 @@ public class MarketApiService : IMarketApiService
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadAsStringAsync();
     }
-
     public async Task<string> ListHorseRacingMarketCatalogueAsync(string eventTypeId = null, string eventId = null, DateTime? openDate = null)
     {
-        _sessionToken = await _authService.GetSessionTokenAsync();
-
-        var formattedOpenDate = openDate?.ToString("yyyy-MM-ddTHH:mm:ssZ");
-
-        var filter = new
+        try
         {
-            eventTypeIds = eventTypeId != null ? new[] { eventTypeId } : null,
-            eventIds = eventId != null ? new[] { eventId } : null,
-            openDate = formattedOpenDate,
-            marketTypeCodes = new[] { "WIN", "PLACE" }
-        };
+            _sessionToken = await _authService.GetSessionTokenAsync();
 
-        var requestBody = new
-        {
-            jsonrpc = "2.0",
-            method = "SportsAPING/v1.0/listMarketCatalogue",
-            @params = new
+            // Only include open and upcoming races (OPEN markets) for today
+            var todayUtc = DateTime.UtcNow.Date;
+            var tomorrowUtc = todayUtc.AddDays(1);
+            var filter = new
             {
-                filter = filter,
-                maxResults = 100,
-                marketProjection = new[] { "COMPETITION", "EVENT", "EVENT_TYPE", "RUNNER_DESCRIPTION", "RUNNER_METADATA" }
-            },
-            id = 1
-        };
+                eventTypeIds = eventTypeId != null ? new[] { eventTypeId } : null,
+                eventIds = eventId != null ? new[] { eventId } : null,
+                marketTypeCodes = new[] { "WIN", "PLACE" },
+                marketStatuses = new[] { "OPEN" },
+                marketStartTime = new { from = todayUtc, to = tomorrowUtc }
+            };
 
-        _httpClient.DefaultRequestHeaders.Remove("X-Authentication");
-        _httpClient.DefaultRequestHeaders.Add("X-Authentication", _sessionToken);
+            var requestBody = new
+            {
+                jsonrpc = "2.0",
+                method = "SportsAPING/v1.0/listMarketCatalogue",
+                @params = new
+                {
+                    filter = filter,
+                    maxResults = 100,
+                    marketProjection = new[] { "COMPETITION", "EVENT", "EVENT_TYPE", "RUNNER_DESCRIPTION", "RUNNER_METADATA" }
+                },
+                id = 1
+            };
 
-        var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
-        var response = await _httpClient.PostAsync(_settings.ExchangeEndpoint, content);
-        response.EnsureSuccessStatusCode();
+            _httpClient.DefaultRequestHeaders.Remove("X-Authentication");
+            _httpClient.DefaultRequestHeaders.Add("X-Authentication", _sessionToken);
 
-        var jsonResponse = await response.Content.ReadAsStringAsync();
-        return jsonResponse;
+            var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
+            var response = await _httpClient.PostAsync(_settings.ExchangeEndpoint, content);
+            response.EnsureSuccessStatusCode();
+
+            var jsonResponse = await response.Content.ReadAsStringAsync();
+
+            // Debugging: Log the raw response to check if the response format is as expected
+           //Console.WriteLine("--- Raw Market Catalogue JSON ---");
+           //Console.WriteLine(jsonResponse);
+
+            return jsonResponse;
+        }
+        catch (Exception ex)
+        {
+            // Log the error
+           //Console.WriteLine($"Error in ListHorseRacingMarketCatalogueAsync: {ex.Message}");
+            return string.Empty; // Return empty string or handle accordingly
+        }
     }
+
      public async Task<string> GetMarketProfitAndLossAsync(List<string> marketIds)
         {
             _sessionToken = await _authService.GetSessionTokenAsync();
@@ -211,4 +227,3 @@ public interface IMarketApiService
     Task<string> ListHorseRacingMarketCatalogueAsync(string eventTypeId = null, string eventId = null,
         DateTime? openDate = null);
 }
-

@@ -62,21 +62,21 @@ public class DisplayHandler
                 var pointsBalance = accountFundsResponse.Result.PointsBalance;
                 var wallet = accountFundsResponse.Result.Wallet;
 
-                //Console.WriteLine("--------------------------------------------------------------------------------------------------------------------------");
-                //Console.WriteLine("| Available to Bet Balance | Exposure | Retained Commission | Exposure Limit | Discount Rate | Points Balance | Wallet |");
-                //Console.WriteLine("--------------------------------------------------------------------------------------------------------------------------");
+                Console.WriteLine("--------------------------------------------------------------------------------------------------------------------------");
+                Console.WriteLine("| Available to Bet Balance | Exposure | Retained Commission | Exposure Limit | Discount Rate | Points Balance | Wallet |");
+                Console.WriteLine("--------------------------------------------------------------------------------------------------------------------------");
 
-                //Console.WriteLine($"| {availableToBetBalance,24} | {exposure,8} | {retainedCommission,19} | {exposureLimit,13} | {discountRate,12} | {pointsBalance,14} | {wallet,-6} |");
-                //Console.WriteLine("--------------------------------------------------------------------------------------------------------------------------");
+                Console.WriteLine($"| {availableToBetBalance,24} | {exposure,8} | {retainedCommission,19} | {exposureLimit,13} | {discountRate,12} | {pointsBalance,14} | {wallet,-6} |");
+                Console.WriteLine("--------------------------------------------------------------------------------------------------------------------------");
             }
             else
             {
-                //Console.WriteLine("Error: 'result' property is missing or invalid in the JSON response.");
+                Console.WriteLine("Error: 'result' property is missing or invalid in the JSON response.");
             }
         }
         catch (Exception ex)
         {
-            //Console.WriteLine($"Error displaying account data: {ex.Message}");
+            Console.WriteLine($"Error displaying account data: {ex.Message}");
         }
     }
 }
