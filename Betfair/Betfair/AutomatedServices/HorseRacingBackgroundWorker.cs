@@ -2,10 +2,9 @@ using Betfair.AutomationServices;
 using Betfair.Data;
 using Betfair.Handlers;
 using Betfair.Models.Market;
-using Betfair.Models.Event;
 using Betfair.Services.Account;
 
-namespace Betfair.Services
+namespace Betfair.AutomatedServices
 {
     public class HorseRacingStartupService : BackgroundService
     {
@@ -13,17 +12,20 @@ namespace Betfair.Services
         private readonly EventAutomationService _eventAutomationService;
         private readonly EventDb2 _eventDb;
         private readonly AccountService _accountService;
+        private readonly MarketAutomationService _marketAutomationService;
 
         public HorseRacingStartupService(
             HorseRacingAutomationService horseRacingAutomationService,
             EventAutomationService eventAutomationService,
             EventDb2 eventDb,
-            AccountService accountService)
+            AccountService accountService,
+            MarketAutomationService marketAutomationService)
         {
             _horseRacingAutomationService = horseRacingAutomationService;
             _eventAutomationService = eventAutomationService;
             _eventDb = eventDb;
             _accountService = accountService;
+            _marketAutomationService = marketAutomationService;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -60,6 +62,7 @@ namespace Betfair.Services
                 if (marketIds.Any())
                 {
                     // 4. Fetch and process market books for these market IDs
+                    await _marketAutomationService.ProcessMarketBooksAsync(marketIds);
                     await _horseRacingAutomationService.ProcessHorseMarketBooksAsync(marketIds);
                 }
 

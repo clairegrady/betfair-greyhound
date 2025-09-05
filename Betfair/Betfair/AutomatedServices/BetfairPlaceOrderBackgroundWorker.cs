@@ -67,8 +67,9 @@ public class BetfairPlaceOrderBackgroundWorker : BackgroundService
             }
             //await _databaseService.DisplayMarketBooks(currentTennisMarketIds);
 
-            //await _orderService.PlaceOrdersAsync("1.237512511", "10109527", 1.23, 1.00, "BACK");
-            
+            // Comment out the problematic line temporarily
+            // await _placeOrderService.PlaceOrdersAsync("1.247146226", "10109527", 1.23, 1.00, "BACK");
+
             // var instructions = new List<CancelInstruction>
             // {
             //     new CancelInstruction { betId = "372606848835" } // Provide the betId to cancel a specific bet

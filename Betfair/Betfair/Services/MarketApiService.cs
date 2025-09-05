@@ -66,7 +66,7 @@ public class MarketApiService : IMarketApiService
     public async Task<string> ListMarketBookAsync(List<string> marketIds)
     {
         _sessionToken = await _authService.GetSessionTokenAsync();
-        const int maxMarketIds = 10;
+        const int maxMarketIds = 10; // Reduced to 10 to avoid TOO_MUCH_DATA error
 
         var limitedMarketIds = marketIds.Take(maxMarketIds).ToList();
 
@@ -88,7 +88,8 @@ public class MarketApiService : IMarketApiService
         var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
         var response = await _httpClient.PostAsync(_settings.ExchangeEndpoint, content);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadAsStringAsync();
+        var result = await response.Content.ReadAsStringAsync();
+        return result;
     }
     public async Task<string> ListHorseRacingMarketCatalogueAsync(string eventTypeId = null, string eventId = null, DateTime? openDate = null)
     {
@@ -97,15 +98,22 @@ public class MarketApiService : IMarketApiService
             _sessionToken = await _authService.GetSessionTokenAsync();
 
             // Only include open and upcoming races (OPEN markets) for today
-            var todayUtc = DateTime.UtcNow.Date;
-            var tomorrowUtc = todayUtc.AddDays(1);
+            var todayUtcDateTime = DateTime.UtcNow;
+            var tomorrowUtcDateTime = todayUtcDateTime.AddDays(1);
+            var todayAestDateTime = TimeZoneInfo.ConvertTimeFromUtc(todayUtcDateTime, TimeZoneInfo.FindSystemTimeZoneById("AUS Eastern Standard Time"));
+            var tomorrowAestDateTime = TimeZoneInfo.ConvertTimeFromUtc(tomorrowUtcDateTime, TimeZoneInfo.FindSystemTimeZoneById("AUS Eastern Standard Time"));
+
+            //Console.WriteLine(todayUtcDateTime);
+            //Console.WriteLine(todayAestDateTime);
+            //Console.WriteLine(tomorrowAestDateTime);
             var filter = new
             {
                 eventTypeIds = eventTypeId != null ? new[] { eventTypeId } : null,
                 eventIds = eventId != null ? new[] { eventId } : null,
                 marketTypeCodes = new[] { "WIN", "PLACE" },
-                marketStatuses = new[] { "OPEN" },
-                marketStartTime = new { from = todayUtc, to = tomorrowUtc }
+                marketStatuses = new[] { "OPEN", "ACTIVE", "SUSPENDED" },
+                marketStartTime = new { from = todayUtcDateTime, to = tomorrowAestDateTime.AddDays(7) },
+                marketCountries = new[] { "AU" }
             };
 
             var requestBody = new
@@ -115,7 +123,7 @@ public class MarketApiService : IMarketApiService
                 @params = new
                 {
                     filter = filter,
-                    maxResults = 100,
+                    maxResults = 200,
                     marketProjection = new[] { "COMPETITION", "EVENT", "EVENT_TYPE", "RUNNER_DESCRIPTION", "RUNNER_METADATA" }
                 },
                 id = 1

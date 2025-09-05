@@ -95,7 +95,7 @@ public class GreyhoundAutomationService
         }
     }
 
-    public async Task<List<MarketCatalogue>> ProcessGreyhoundMarketCataloguesAsync(string eventId = null, string competitionId = null)
+    public async Task<List<MarketCatalogue>> ProcessGreyhoundMarketCataloguesAsync(string? eventId = null, string? competitionId = null)
 {
     var marketCatalogueJson = await _marketApiService.ListMarketCatalogue(eventId: eventId, competitionId: competitionId);
     var marketCatalogueApiResponse = JsonSerializer.Deserialize<ApiResponse<MarketCatalogue>>(marketCatalogueJson);
