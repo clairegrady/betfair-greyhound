@@ -51,6 +51,9 @@ BASIC/
 models/
 checkpoints/
 
+# But allow C# Models directory
+!Betfair/Betfair/Models/
+
 # IPython history
 .history
 
