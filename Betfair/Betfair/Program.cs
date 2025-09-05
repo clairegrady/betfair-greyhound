@@ -1,11 +1,16 @@
 ﻿using Betfair.Data;
 using Betfair.Services;
 using Betfair.AutomationServices;
+using Betfair.AutomatedServices;
 using Betfair.Handlers;
 using Betfair.Services.Account;
 using Betfair.Services.HistoricalData;
+using Betfair.Services.ML;
+using Betfair.Services.Simulation;
+using Betfair.Extensions;
 using Betfair.Settings;
 using Microsoft.AspNetCore.Connections;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Logging.AddConsole();
@@ -80,12 +85,24 @@ builder.Services.AddSingleton(new EventDb2(connectionString));
 builder.Services.AddSingleton(new MarketProfitAndLossDb(connectionString));
 builder.Services.AddSingleton(new HistoricalDataDb(connectionString));
 
+// Add simulation database
+var simulationConnectionString = builder.Configuration.GetConnectionString("SimulationDatabase") ?? "Data Source=simulation.db";
+builder.Services.AddDbContext<SimulationDbContext>(options =>
+    options.UseSqlite(simulationConnectionString));
+
+// Add ML services
+builder.Services.AddMLServices(builder.Configuration);
+
+// Add simulation services
+builder.Services.AddScoped<IBettingSimulationService, BettingSimulationService>();
+
 // Register scoped services
 builder.Services.AddScoped<CompetitionAutomationService>();
 builder.Services.AddScoped<MarketAutomationService>();
 builder.Services.AddScoped<EventAutomationService>();
 builder.Services.AddScoped<GreyhoundAutomationService>();
-builder.Services.AddScoped<HorseRacingAutomationService>();
+builder.Services.AddSingleton<HorseRacingAutomationService>();
+builder.Services.AddScoped<MarketBackgroundWorker>();
 
 // Register hosted services
 //builder.Services.AddHostedService<BetfairAutomationService>();
@@ -128,7 +145,6 @@ catch (IOException ex) when (ex.InnerException is AddressInUseException)
     Environment.Exit(1); // Exit the application
 }
 
-// Configure Swagger
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {

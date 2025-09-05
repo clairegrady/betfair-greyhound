@@ -54,8 +54,11 @@ public class MarketBookDb
     }
     public async Task InsertHorseMarketBooksIntoDatabase(List<MarketBook<RunnerFlat>> marketBooks)
 {
+    Console.WriteLine($"🐎 InsertHorseMarketBooksIntoDatabase called with {marketBooks?.Count ?? 0} market books");
+    
     if (marketBooks == null || !marketBooks.Any())
     {
+        Console.WriteLine("❌ No market books provided - returning early");
         return;
     }
 
@@ -71,22 +74,16 @@ public class MarketBookDb
         foreach (var marketBook in marketBooks)
         {
             string marketId = marketBook.MarketId;
+            Console.WriteLine($"📊 Processing market: {marketId}");
 
             if (string.IsNullOrEmpty(marketId))
             {
+                Console.WriteLine("⚠️ Skipping market with empty MarketId");
                 skippedMarketBooks++;
                 continue;
             }
 
-            var existingMarket = await connection.ExecuteScalarAsync<int>(
-                "SELECT COUNT(1) FROM HorseMarketBook WHERE MarketId = @MarketId",
-                new { MarketId = marketId });
-
-            if (existingMarket > 0)
-            {
-                skippedMarketBooks++;
-                continue;
-            }
+            Console.WriteLine($"🏇 Processing market: {marketId} with {marketBook.Runners?.Count ?? 0} runners");
 
             var marketInfo = await GetMarketNameAndEventNameByMarketId(connection, marketId);
             string marketName = marketInfo?.MarketName ?? "Unknown";
@@ -95,50 +92,63 @@ public class MarketBookDb
             {
                 if (runner.SelectionId == null)
                 {
+                    Console.WriteLine("⚠️ Skipping runner with null SelectionId");
                     continue;
                 }
 
-                // Log the OwnerName for debugging purposes
-                Console.WriteLine($"Inserting Runner: SelectionId={runner.SelectionId}, OwnerName={runner.OwnerName}");
+                // Check if this specific horse already exists
+                var existingHorse = await connection.ExecuteScalarAsync<int>(
+                    "SELECT COUNT(1) FROM HorseMarketBook WHERE MarketId = @MarketId AND SelectionId = @SelectionId",
+                    new { MarketId = marketId, SelectionId = runner.SelectionId });
 
-                var paramValues = new Dictionary<string, object>
+                if (existingHorse > 0)
+                {
+                    // Delete this specific horse's old record
+                    await DeleteExistingHorseRecord(connection, marketId, runner.SelectionId);
+                    Console.WriteLine($"🔄 Replacing existing data for horse {runner.SelectionId} in market {marketId}");
+                }
+
+                // Log the OwnerName for debugging purposes
+                Console.WriteLine($"✅ Inserting Runner: SelectionId={runner.SelectionId}, Name={runner.RunnerName}, OwnerName={runner.OwnerName}");
+
+                var paramValues = new Dictionary<string, object?>
                 {
                     ["MarketId"] = marketId,
-                    ["MarketName"] = marketInfo?.MarketName ?? "Unknown",
+                    ["MarketName"] = marketName,
                     ["EventName"] = marketInfo?.EventName ?? "Unknown",
                     ["SelectionId"] = runner.SelectionId,
-                    ["RunnerName"] = runner.RunnerName ?? "Unknown",
+                    ["RunnerName"] = runner.RunnerName,
                     ["Status"] = runner.Status,
                     ["SIRE_NAME"] = runner.SireName,
                     ["CLOTH_NUMBER_ALPHA"] = runner.ClothNumberAlpha,
-                    ["OFFICIAL_RATING"] = ParseNullableDouble(runner.OfficialRating) ?? 0.0,
+                    ["OFFICIAL_RATING"] = ParseNullableDouble(runner.OfficialRating),
                     ["COLOURS_DESCRIPTION"] = runner.ColoursDescription,
                     ["COLOURS_FILENAME"] = runner.ColoursFilename,
-                    ["FORECASTPRICE_DENOMINATOR"] = ParseNullableInt(runner.ForecastPriceDenominator) ?? 0,
+                    ["FORECASTPRICE_DENOMINATOR"] = ParseNullableInt(runner.ForecastPriceDenominator),
                     ["DAMSIRE_NAME"] = runner.DamsireName,
-                    ["WEIGHT_VALUE"] = ParseNullableDouble(runner.WeightValue) ?? 0.0,
+                    ["WEIGHT_VALUE"] = ParseNullableDouble(runner.WeightValue),
                     ["SEX_TYPE"] = runner.SexType,
-                    ["DAYS_SINCE_LAST_RUN"] = ParseNullableInt(runner.DaysSinceLastRun) ?? 0,
+                    ["DAYS_SINCE_LAST_RUN"] = ParseNullableInt(runner.DaysSinceLastRun),
                     ["WEARING"] = runner.Wearing,
                     ["OWNER_NAME"] = runner.OwnerName,
-                    ["DAM_YEAR_BORN"] = ParseNullableInt(runner.DamYearBorn) ?? 0,
+                    ["DAM_YEAR_BORN"] = ParseNullableInt(runner.DamYearBorn),
                     ["SIRE_BRED"] = runner.SireBred,
                     ["JOCKEY_NAME"] = runner.JockeyName,
                     ["DAM_BRED"] = runner.DamBred,
-                    ["ADJUSTED_RATING"] = ParseNullableDouble(runner.AdjustedRating) ?? 0.0,
+                    ["ADJUSTED_RATING"] = ParseNullableDouble(runner.AdjustedRating),
                     ["CLOTH_NUMBER"] = runner.ClothNumber,
-                    ["SIRE_YEAR_BORN"] = ParseNullableInt(runner.SireYearBorn) ?? 0,
+                    ["SIRE_YEAR_BORN"] = ParseNullableInt(runner.SireYearBorn),
                     ["TRAINER_NAME"] = runner.TrainerName,
                     ["COLOUR_TYPE"] = runner.ColourType,
-                    ["AGE"] = ParseNullableInt(runner.Age) ?? 0,
+                    ["AGE"] = ParseNullableInt(runner.Age),
                     ["DAMSIRE_BRED"] = runner.DamsireBred,
-                    ["JOCKEY_CLAIM"] = ParseNullableDouble(runner.JockeyClaim) ?? 0.0,
-                    ["FORM"] = runner.Form ?? "N/A",
-                    ["FORECASTPRICE_NUMERATOR"] = ParseNullableInt(runner.ForecastPriceNumerator) ?? 0,
+                    ["JOCKEY_CLAIM"] = ParseNullableDouble(runner.JockeyClaim),
+                    ["FORM"] = runner.Form,
+                    ["FORECASTPRICE_NUMERATOR"] = ParseNullableInt(runner.ForecastPriceNumerator),
                     ["BRED"] = runner.Bred,
                     ["DAM_NAME"] = runner.DamName,
-                    ["DAMSIRE_YEAR_BORN"] = ParseNullableInt(runner.DamsireYearBorn) ?? 0,
-                    ["STALL_DRAW"] = ParseNullableInt(runner.StallDraw) ?? 0,
+                    ["DAMSIRE_YEAR_BORN"] = ParseNullableInt(runner.DamsireYearBorn),
+                    ["STALL_DRAW"] = ParseNullableInt(runner.StallDraw),
                     ["WEIGHT_UNITS"] = runner.WeightUnits
                 };
 
@@ -175,39 +185,60 @@ public class MarketBookDb
         }
 
         await transaction.CommitAsync();
+        Console.WriteLine($"✅ Successfully processed {successfulRunnerInserts} runners across {marketBooks.Count} market books.");
     }
     catch (Exception ex)
     {
+        Console.WriteLine($"❌ Error inserting horse market books: {ex.Message}");
+        Console.WriteLine($"Stack trace: {ex.StackTrace}");
         await transaction.RollbackAsync();
     }
 }
 
     public async Task InsertMarketBooksIntoDatabase(List<MarketBook<ApiRunner>> marketBooks)
     {
+        Console.WriteLine($"📊 InsertMarketBooksIntoDatabase called with {marketBooks?.Count ?? 0} market books");
+
+        if (marketBooks == null || !marketBooks.Any())
+        {
+            Console.WriteLine("❌ No market books provided to InsertMarketBooksIntoDatabase - returning early");
+            return;
+        }
+
         using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync();
-       //Console.WriteLine(new string('*', 215));
+        Console.WriteLine($"🔗 Database connection opened for back/lay price insertion");
 
         using var transaction = await connection.BeginTransactionAsync();
 
         await DeleteExistingData(connection, new List<string> { "MarketBookBackPrices", "MarketBookLayPrices" });
         await ResetAutoIncrementCounters(connection, new List<string> { "MarketBookBackPrices", "MarketBookLayPrices" });
 
+        int totalBackPrices = 0;
+        int totalLayPrices = 0;
+        int processedMarkets = 0;
+
         try
         {
             foreach (var marketBook in marketBooks)
             {
                 string marketId = marketBook.MarketId;
+                Console.WriteLine($"💰 Processing market {marketId} with {marketBook.Runners?.Count ?? 0} runners for back/lay prices");
+                processedMarkets++;
 
                 foreach (var runner in marketBook.Runners)
                 {
+                    Console.WriteLine($"🏃 Processing runner {runner.SelectionId} with exchange data: {runner.Exchange != null}");
+
                     if (runner.Exchange != null)
                     {
+                        Console.WriteLine($"📈 Runner {runner.SelectionId} has {runner.Exchange.AvailableToBack?.Count ?? 0} back prices and {runner.Exchange.AvailableToLay?.Count ?? 0} lay prices");
+
                         foreach (var back in runner.Exchange.AvailableToBack)
                         {
                             if (await IsDataExist(connection, "MarketBookBackPrices", marketId, runner.SelectionId, back.Price))
                             {
-                               //Console.WriteLine($"Skipping duplicate Back bet data for Runner {runner.SelectionId}: Price = {back.Price}");
+                                Console.WriteLine($"⚠️ Skipping duplicate Back bet data for Runner {runner.SelectionId}: Price = {back.Price}");
                                 continue;
                             }
 
@@ -227,13 +258,15 @@ public class MarketBookDb
                             priceCommand.Parameters.AddWithValue("$TotalMatched", runner.TotalMatched ?? (object)DBNull.Value);
 
                             await priceCommand.ExecuteNonQueryAsync();
+                            totalBackPrices++;
+                            Console.WriteLine($"✅ Inserted back price: Market={marketId}, Runner={runner.SelectionId}, Price={back.Price}, Size={back.Size}");
                         }
 
                         foreach (var lay in runner.Exchange.AvailableToLay)
                         {
                             if (await IsDataExist(connection, "MarketBookLayPrices", marketId, runner.SelectionId, lay.Price))
                             {
-                               //Console.WriteLine($"Skipping duplicate Lay bet data for Runner {runner.SelectionId}: Price = {lay.Price}");
+                                Console.WriteLine($"⚠️ Skipping duplicate Lay bet data for Runner {runner.SelectionId}: Price = {lay.Price}");
                                 continue;
                             }
 
@@ -253,18 +286,25 @@ public class MarketBookDb
                             priceCommand.Parameters.AddWithValue("$TotalMatched", runner.TotalMatched ?? (object)DBNull.Value);
 
                             await priceCommand.ExecuteNonQueryAsync();
+                            totalLayPrices++;
+                            Console.WriteLine($"✅ Inserted lay price: Market={marketId}, Runner={runner.SelectionId}, Price={lay.Price}, Size={lay.Size}");
                         }
+                    }
+                    else
+                    {
+                        Console.WriteLine($"❌ Runner {runner.SelectionId} has no exchange data");
                     }
                 }
             }
             await transaction.CommitAsync();
-           //Console.WriteLine("Market book back/lay prices inserted successfully.");
+            Console.WriteLine($"🎉 Market book back/lay prices inserted successfully!");
+            Console.WriteLine($"📊 Total processed: {processedMarkets} markets, {totalBackPrices} back prices, {totalLayPrices} lay prices");
         }
         catch (Exception ex)
         {
             await transaction.RollbackAsync();
-           //Console.WriteLine($"Error inserting market book prices: {ex.Message}");
-           //Console.WriteLine(ex.ToString());
+            Console.WriteLine($"❌ Error inserting market book prices: {ex.Message}");
+            Console.WriteLine($"📋 Stack trace: {ex.StackTrace}");
         }
     }
 
@@ -402,7 +442,9 @@ public class MarketBookDb
         command.Parameters.AddWithValue("$SelectionId", selectionId);
         command.Parameters.AddWithValue("$Price", price ?? (object)DBNull.Value);
 
+        //Console.WriteLine($"Checking if data exists in table {tableName} for MarketId: {marketId}, SelectionId: {selectionId}, Price: {price}");
         var count = await command.ExecuteScalarAsync();
+        //Console.WriteLine($"Data exists: {(long)count > 0}");
         return (long)count > 0;
     }
 
@@ -414,6 +456,15 @@ public class MarketBookDb
             resetCommand.CommandText = $"DELETE FROM SQLITE_SEQUENCE WHERE NAME = '{table}'";
             await resetCommand.ExecuteNonQueryAsync();
         }
+    }
+
+    private async Task DeleteExistingHorseRecord(SqliteConnection connection, string marketId, long selectionId)
+    {
+        using var deleteCommand = connection.CreateCommand();
+        deleteCommand.CommandText = "DELETE FROM HorseMarketBook WHERE MarketId = @MarketId AND SelectionId = @SelectionId";
+        deleteCommand.Parameters.AddWithValue("@MarketId", marketId);
+        deleteCommand.Parameters.AddWithValue("@SelectionId", selectionId);
+        await deleteCommand.ExecuteNonQueryAsync();
     }
 
     public async Task DeleteFinishedRacesAsync()

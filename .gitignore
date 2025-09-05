@@ -12,6 +12,11 @@ __pycache__/
 # macOS system files
 .DS_Store
 
+# Ignore build/debug directories
+/bin/
+/Debug/
+/obj/
+
 # Environment files
 .env
 .venv/
@@ -48,3 +53,6 @@ checkpoints/
 
 # IPython history
 .history
+
+#Database files
+*.db
