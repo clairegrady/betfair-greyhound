@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Betfair")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+908389e5fdcba957673547f3bfe29f3a6f6f7bd2")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+25819b6c36fbf46d1762fbd96e40bb4d417fbce3")]
 [assembly: System.Reflection.AssemblyProductAttribute("Betfair")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Betfair")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
