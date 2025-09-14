@@ -55,8 +55,12 @@ venv/
 # Data output (Parquet files, intermediate files, splits)
 *.parquet
 *.csv
-*.json
 *.jsonl
+
+# Ignore specific JSON files but allow appsettings.json
+package-lock.json
+*.log.json
+*.data.json
 *.log
 
 # Ignore specific directories inside historical-data
