@@ -1,6 +1,6 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Betfair", "Betfair\Betfair.csproj", "{C7422900-A96B-41F5-B88E-259B7F56B0EC}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Betfair-Backend", "Betfair-Backend\Betfair-Backend.csproj", "{C7422900-A96B-41F5-B88E-259B7F56B0EC}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

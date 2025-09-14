@@ -13,9 +13,38 @@ __pycache__/
 .DS_Store
 
 # Ignore build/debug directories
-/bin/
-/Debug/
-/obj/
+bin/
+Debug/
+obj/
+**/bin/
+**/Debug/
+**/obj/
+
+# C# build artifacts
+*.dll
+*.pdb
+*.exe
+*.cache
+*.log
+*.tmp
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.opendb
+*.VC.db
+*.VC.VC.opendb
+
+# .NET Core
+project.lock.json
+project.fragment.lock.json
+artifacts/
+**/Properties/launchSettings.json
 
 # Environment files
 .env
@@ -29,8 +58,6 @@ venv/
 *.json
 *.jsonl
 *.log
-
-*.dll
 
 # Ignore specific directories inside historical-data
 historical-data/
