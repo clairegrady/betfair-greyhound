@@ -75,11 +75,11 @@ BASIC/
 *.pkl
 *.joblib
 *.h5
-models/
 checkpoints/
 
-# But allow C# Models directory
-!Betfair/Betfair/Models/
+# Ignore lowercase models directories but allow C# Models directories
+models/
+!**/Models/
 
 # IPython history
 .history
