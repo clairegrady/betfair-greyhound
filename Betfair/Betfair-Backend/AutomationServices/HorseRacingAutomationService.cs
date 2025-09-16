@@ -155,8 +155,8 @@ namespace Betfair.AutomationServices
                 }
             }
 
-            Console.WriteLine(
-                $"Populated RunnerDescriptionsLookup with {_runnerDescriptionsLookup.Count} unique runners.");
+            //Console.WriteLine(
+                //$"Populated RunnerDescriptionsLookup with {_runnerDescriptionsLookup.Count} unique runners.");
         }
 
         public async Task<List<RunnerFlat>> ProcessHorseMarketBooksAsync(List<string> marketIds)
@@ -174,6 +174,7 @@ namespace Betfair.AutomationServices
                 var allMarketBooks = new List<MarketBook<ApiRunner>>();
                 const int batchSize = 10;
 
+                // Process all batches first, accumulating results
                 for (int i = 0; i < marketIds.Count; i += batchSize)
                 {
                     var batch = marketIds.Skip(i).Take(batchSize).ToList();
@@ -181,152 +182,141 @@ namespace Betfair.AutomationServices
 
                     var marketBookJson = await _marketApiService.ListMarketBookAsync(batch);
 
-                    Console.WriteLine(
-                        $"📥 Batch {i / batchSize + 1} Response: {marketBookJson?.Length ?? 0} characters");
+                    Console.WriteLine($"📥 Batch {i / batchSize + 1} Response: {marketBookJson?.Length ?? 0} characters");
                     if (marketBookJson?.Contains("error") == true)
                     {
                         Console.WriteLine($"❌ Batch {i / batchSize + 1} Error: {marketBookJson}");
                         continue;
                     }
 
-                    var batchResponse =
-                        JsonSerializer.Deserialize<ApiResponse<MarketBook<ApiRunner>>>(marketBookJson);
+                    var batchResponse = JsonSerializer.Deserialize<ApiResponse<MarketBook<ApiRunner>>>(marketBookJson);
                     if (batchResponse?.Result != null)
                     {
                         allMarketBooks.AddRange(batchResponse.Result);
-                        Console.WriteLine(
-                            $"✅ Batch {i / batchSize + 1}: Added {batchResponse.Result.Count} markets");
+                        Console.WriteLine($"✅ Batch {i / batchSize + 1}: Added {batchResponse.Result.Count} markets");
                     }
-
-                    Console.WriteLine($"📊 Total markets collected: {allMarketBooks.Count}");
-
-                    var marketBookApiResponse = new ApiResponse<MarketBook<ApiRunner>> { Result = allMarketBooks };
-                    Console.WriteLine(
-                        $"📊 JSON Analysis: Received {marketBookApiResponse?.Result?.Count ?? 0} markets from API");
-
-                    if (marketBookApiResponse?.Result != null)
-                    {
-                        var marketCounts = marketBookApiResponse.Result
-                            .GroupBy(m => m.MarketId?.Split('.')[0] ?? "Unknown")
-                            .Select(g => new { MarketId = g.Key, Count = g.Count() })
-                            .ToList();
-
-                        Console.WriteLine(
-                            $"🌍 Market breakdown: {string.Join(", ", marketCounts.Select(m => $"{m.MarketId}:{m.Count}"))}");
-                    }
-
-                    if (marketBookApiResponse?.Result == null || !marketBookApiResponse.Result.Any())
-                    {
-                        return new List<RunnerFlat>();
-                    }
-
-                    // Step 2: Flatten MarketBooks to RunnerFlat objects, COMBINING with catalogue data
-                    Console.WriteLine("🔄 Starting to flatten market books to RunnerFlat objects...");
-                    var flattenedMarketBooks = marketBookApiResponse.Result
-                        .Where(book => !string.IsNullOrEmpty(book.MarketId))
-                        .Select(book => new MarketBook<RunnerFlat>
-                        {
-                            MarketId = book.MarketId,
-                            Status = book.Status,
-                            BetDelay = book.BetDelay,
-                            LastMatchTime = book.LastMatchTime,
-                            TotalMatched = book.TotalMatched,
-                            Runners = book.Runners?.Select(apiRunner =>
-                            {
-                                RunnerDescription? runnerDescriptionFromCatalogue = null;
-                                bool foundInLookup = _runnerDescriptionsLookup.TryGetValue(apiRunner.SelectionId,
-                                    out runnerDescriptionFromCatalogue);
-
-                                // Safely get metadata and runner name from the catalogue description
-                                // If not found in catalogue, metadata and runnerName will remain null.
-                                var metadata =
-                                    runnerDescriptionFromCatalogue?.Metadata ??
-                                    new RunnerMetadata(); // If description is null, default to empty metadata
-                                var runnerName = runnerDescriptionFromCatalogue?.RunnerName;
-
-                                return new RunnerFlat
-                                {
-                                    // From MarketBook API
-                                    SelectionId = apiRunner.SelectionId,
-                                    Handicap = apiRunner.Handicap,
-                                    Status = apiRunner.Status,
-                                    LastPriceTraded = apiRunner.LastPriceTraded,
-                                    TotalMatched = apiRunner.TotalMatched,
-
-                                    RunnerName = runnerName, // From Market Catalogue Description
-
-                                    // Metadata fields from Market Catalogue Description
-                                    Form = metadata.Form,
-                                    WeightValue = metadata.WeightValue,
-                                    StallDraw = metadata.StallDraw,
-                                    TrainerName = metadata.TrainerName,
-                                    OwnerName = metadata.OwnerName,
-                                    Age = metadata.Age,
-                                    SireName = metadata.SireName,
-                                    DamName = metadata.DamName,
-                                    Wearing = metadata.Wearing,
-                                    JockeyName = metadata.JockeyName,
-                                    JockeyClaim = metadata.JockeyClaim,
-                                    SexType = metadata.SexType,
-                                    DaysSinceLastRun = metadata.DaysSinceLastRun,
-                                    SireBred = metadata.SireBred,
-                                    DamBred = metadata.DamBred,
-                                    DamsireName = metadata.DamsireName,
-                                    DamsireBred = metadata.DamsireBred,
-                                    DamsireYearBorn = metadata.DamsireYearBorn,
-                                    SireYearBorn = metadata.SireYearBorn,
-                                    DamYearBorn = metadata.DamYearBorn,
-                                    AdjustedRating = metadata.AdjustedRating,
-                                    OfficialRating = metadata.OfficialRating,
-                                    ForecastPriceNumerator = metadata.ForecastPriceNumerator,
-                                    ForecastPriceDenominator = metadata.ForecastPriceDenominator,
-                                    Bred = metadata.Bred,
-                                    ColourType = metadata.ColourType,
-                                    WeightUnits = metadata.WeightUnits,
-                                    ClothNumber = metadata.ClothNumber,
-                                    ClothNumberAlpha = metadata.ClothNumberAlpha,
-                                    ColoursDescription = metadata.ColoursDescription,
-                                    ColoursFilename = metadata.ColoursFilename,
-                                    MetadataRunnerId = metadata.RunnerId,
-                                };
-                            }).ToList()
-                        }).ToList();
-
-                    if (flattenedMarketBooks.Any())
-                    {
-                        int totalRunnersToInsert = 0;
-                        foreach (var marketBookFlat in flattenedMarketBooks)
-                        {
-                            if (marketBookFlat.Runners != null)
-                            {
-                                totalRunnersToInsert += marketBookFlat.Runners.Count;
-                            }
-                        }
-
-                        Console.WriteLine(
-                            $"📈 Flattening complete: {flattenedMarketBooks.Count} markets processed out of {marketBookApiResponse?.Result?.Count ?? 0} received");
-
-                        await _marketBookDb.InsertHorseMarketBooksIntoDatabase(flattenedMarketBooks);
-
-                        // NEW: Also insert the betting prices for the same markets
-                        Console.WriteLine("🎯 Also inserting back/lay prices for the same horse racing markets...");
-                        var apiRunnerMarketBooks = marketBookApiResponse.Result.ToList();
-                        await _marketBookDb.InsertMarketBooksIntoDatabase(apiRunnerMarketBooks);
-                        Console.WriteLine("✅ Back/lay prices insertion completed for horse racing markets");
-
-                        Console.WriteLine(
-                            "ProcessHorseMarketBooksAsync: InsertHorseMarketBooksIntoDatabase call completed.");
-                    }
-
-                    var allFlattenedRunners =
-                        flattenedMarketBooks.SelectMany(marketBook => marketBook.Runners).ToList();
-                    return allFlattenedRunners;
                 }
 
-                return new List<RunnerFlat>();
+                Console.WriteLine($"📊 Total markets collected: {allMarketBooks.Count}");
+
+                // Now process all accumulated market books
+                if (!allMarketBooks.Any())
+                {
+                    Console.WriteLine("❌ No market books collected from any batch");
+                    return new List<RunnerFlat>();
+                }
+
+                var marketBookApiResponse = new ApiResponse<MarketBook<ApiRunner>> { Result = allMarketBooks };
+                Console.WriteLine($"📊 JSON Analysis: Received {marketBookApiResponse?.Result?.Count ?? 0} markets from API");
+
+                if (marketBookApiResponse?.Result != null)
+                {
+                    var marketCounts = marketBookApiResponse.Result
+                        .GroupBy(m => m.MarketId?.Split('.')[0] ?? "Unknown")
+                        .Select(g => new { MarketId = g.Key, Count = g.Count() })
+                        .ToList();
+
+                    Console.WriteLine($"🌍 Market breakdown: {string.Join(", ", marketCounts.Select(m => $"{m.MarketId}:{m.Count}"))}");
+                }
+
+                // Step 2: Flatten MarketBooks to RunnerFlat objects, COMBINING with catalogue data
+                Console.WriteLine("🔄 Starting to flatten market books to RunnerFlat objects...");
+                var flattenedMarketBooks = marketBookApiResponse.Result
+                    .Where(book => !string.IsNullOrEmpty(book.MarketId))
+                    .Select(book => new MarketBook<RunnerFlat>
+                    {
+                        MarketId = book.MarketId,
+                        Status = book.Status,
+                        BetDelay = book.BetDelay,
+                        LastMatchTime = book.LastMatchTime,
+                        TotalMatched = book.TotalMatched,
+                        Runners = book.Runners?.Select(apiRunner =>
+                        {
+                            RunnerDescription? runnerDescriptionFromCatalogue = null;
+                            bool foundInLookup = _runnerDescriptionsLookup.TryGetValue(apiRunner.SelectionId, out runnerDescriptionFromCatalogue);
+
+                            // Safely get metadata and runner name from the catalogue description
+                            var metadata = runnerDescriptionFromCatalogue?.Metadata ?? new RunnerMetadata();
+                            var runnerName = runnerDescriptionFromCatalogue?.RunnerName;
+
+                            return new RunnerFlat
+                            {
+                                // From MarketBook API
+                                SelectionId = apiRunner.SelectionId,
+                                Handicap = apiRunner.Handicap,
+                                Status = apiRunner.Status,
+                                LastPriceTraded = apiRunner.LastPriceTraded,
+                                TotalMatched = apiRunner.TotalMatched,
+
+                                RunnerName = runnerName, // From Market Catalogue Description
+
+                                // Metadata fields from Market Catalogue Description
+                                Form = metadata.Form,
+                                WeightValue = metadata.WeightValue,
+                                StallDraw = metadata.StallDraw,
+                                TrainerName = metadata.TrainerName,
+                                OwnerName = metadata.OwnerName,
+                                Age = metadata.Age,
+                                SireName = metadata.SireName,
+                                DamName = metadata.DamName,
+                                Wearing = metadata.Wearing,
+                                JockeyName = metadata.JockeyName,
+                                JockeyClaim = metadata.JockeyClaim,
+                                SexType = metadata.SexType,
+                                DaysSinceLastRun = metadata.DaysSinceLastRun,
+                                SireBred = metadata.SireBred,
+                                DamBred = metadata.DamBred,
+                                DamsireName = metadata.DamsireName,
+                                DamsireBred = metadata.DamsireBred,
+                                DamsireYearBorn = metadata.DamsireYearBorn,
+                                SireYearBorn = metadata.SireYearBorn,
+                                DamYearBorn = metadata.DamYearBorn,
+                                AdjustedRating = metadata.AdjustedRating,
+                                OfficialRating = metadata.OfficialRating,
+                                ForecastPriceNumerator = metadata.ForecastPriceNumerator,
+                                ForecastPriceDenominator = metadata.ForecastPriceDenominator,
+                                Bred = metadata.Bred,
+                                ColourType = metadata.ColourType,
+                                WeightUnits = metadata.WeightUnits,
+                                ClothNumber = metadata.ClothNumber,
+                                ClothNumberAlpha = metadata.ClothNumberAlpha,
+                                ColoursDescription = metadata.ColoursDescription,
+                                ColoursFilename = metadata.ColoursFilename,
+                                MetadataRunnerId = metadata.RunnerId,
+                            };
+                        }).ToList()
+                    }).ToList();
+
+                if (flattenedMarketBooks.Any())
+                {
+                    int totalRunnersToInsert = 0;
+                    foreach (var marketBookFlat in flattenedMarketBooks)
+                    {
+                        if (marketBookFlat.Runners != null)
+                        {
+                            totalRunnersToInsert += marketBookFlat.Runners.Count;
+                        }
+                    }
+
+                    Console.WriteLine($"📈 Flattening complete: {flattenedMarketBooks.Count} markets processed out of {marketBookApiResponse?.Result?.Count ?? 0} received, with {totalRunnersToInsert} total runners");
+
+                    await _marketBookDb.InsertHorseMarketBooksIntoDatabase(flattenedMarketBooks);
+
+                    // NEW: Also insert the betting prices for the same markets
+                    Console.WriteLine("🎯 Also inserting back/lay prices for the same horse racing markets...");
+                    var apiRunnerMarketBooks = marketBookApiResponse.Result.ToList();
+                    await _marketBookDb.InsertMarketBooksIntoDatabase(apiRunnerMarketBooks);
+                    Console.WriteLine("✅ Back/lay prices insertion completed for horse racing markets");
+
+                    Console.WriteLine("ProcessHorseMarketBooksAsync: InsertHorseMarketBooksIntoDatabase call completed.");
+                }
+
+                var allFlattenedRunners = flattenedMarketBooks.SelectMany(marketBook => marketBook.Runners).ToList();
+                return allFlattenedRunners;
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"❌ Error in ProcessHorseMarketBooksAsync: {ex.Message}");
                 return new List<RunnerFlat>();
             }
         }

@@ -26,4 +26,11 @@ public class HorseMarketBookController : ControllerBase
 
         return Ok(horseMarketBooks);
     }
+
+    [HttpGet("odds/{selectionId}")]
+    public async Task<IActionResult> GetHorseBackAndLayOdds(long selectionId)
+    {
+        var oddsData = await _marketBookDb.GetHorseBackAndLayOddsAsync(selectionId);
+        return Ok(oddsData);
+    }
 }

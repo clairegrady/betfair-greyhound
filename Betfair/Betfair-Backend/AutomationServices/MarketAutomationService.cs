@@ -40,13 +40,13 @@ public class MarketAutomationService
             return;
         }
 
-        Console.WriteLine($"🔍 Market IDs to process: [{string.Join(", ", marketIds)}]");
+        //Console.WriteLine($"🔍 Market IDs to process: [{string.Join(", ", marketIds)}]");
 
         var marketBookJson = await _marketApiService.ListMarketBookAsync(marketIds);
-        Console.WriteLine($"📦 Received market book JSON: {(!string.IsNullOrEmpty(marketBookJson) ? "Data received" : "No data")}");
+       // Console.WriteLine($"📦 Received market book JSON: {(!string.IsNullOrEmpty(marketBookJson) ? "Data received" : "No data")}");
 
         var marketBookApiResponse = JsonSerializer.Deserialize<ApiResponse<MarketBook<ApiRunner>>>(marketBookJson);
-        Console.WriteLine($"🔄 Deserialization result: {marketBookApiResponse?.Result?.Count() ?? 0} market books");
+        //Console.WriteLine($"🔄 Deserialization result: {marketBookApiResponse?.Result?.Count() ?? 0} market books");
 
         if (marketBookApiResponse?.Result?.Any() == true)
         {
@@ -105,7 +105,7 @@ public class MarketAutomationService
                 })
                 .ToList();
 
-            Console.WriteLine($"🏆 Processed {marketBooks.Count} market books with exchange data");
+            //Console.WriteLine($"🏆 Processed {marketBooks.Count} market books with exchange data");
 
             // Log details about exchange data
             foreach (var book in marketBooks)
@@ -114,23 +114,23 @@ public class MarketAutomationService
                 var totalBackPrices = book.Runners?.Sum(r => r.Exchange?.AvailableToBack?.Count ?? 0) ?? 0;
                 var totalLayPrices = book.Runners?.Sum(r => r.Exchange?.AvailableToLay?.Count ?? 0) ?? 0;
 
-                Console.WriteLine($"📈 Market {book.MarketId}: {runnersWithExchange} runners with exchange data, {totalBackPrices} back prices, {totalLayPrices} lay prices");
+                //Console.WriteLine($"📈 Market {book.MarketId}: {runnersWithExchange} runners with exchange data, {totalBackPrices} back prices, {totalLayPrices} lay prices");
             }
 
             if (marketBooks.Any())
             {
-                Console.WriteLine($"💾 Calling InsertMarketBooksIntoDatabase with {marketBooks.Count} market books");
+                //Console.WriteLine($"💾 Calling InsertMarketBooksIntoDatabase with {marketBooks.Count} market books");
                 await _marketBookDb.InsertMarketBooksIntoDatabase(marketBooks);
-                Console.WriteLine($"✅ InsertMarketBooksIntoDatabase completed");
+                //Console.WriteLine($"✅ InsertMarketBooksIntoDatabase completed");
             }
             else
             {
-                Console.WriteLine("❌ No market books to insert after processing");
+                //Console.WriteLine("❌ No market books to insert after processing");
             }
         }
         else
         {
-            Console.WriteLine("❌ Failed to deserialize market book or no market book data found");
+            //Console.WriteLine("❌ Failed to deserialize market book or no market book data found");
         }
     }
 
@@ -141,11 +141,11 @@ public class MarketAutomationService
 
     if (marketCatalogueApiResponse == null)
     {
-        //Console.WriteLine("Failed to deserialize the market catalogue JSON.");
+        Console.WriteLine("Failed to deserialize the market catalogue JSON.");
     }
     else
     {
-        //Console.WriteLine($"Deserialized Result Count: {marketCatalogueApiResponse.Result?.Count()}");
+        Console.WriteLine($"Deserialized Result Count: {marketCatalogueApiResponse.Result?.Count()}");
     }
 
     var filteredMarketDetails = new List<MarketDetails>();

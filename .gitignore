@@ -90,3 +90,5 @@ models/
 
 #Database files
 *.db
+*.sqlite
+*.sqlite3
