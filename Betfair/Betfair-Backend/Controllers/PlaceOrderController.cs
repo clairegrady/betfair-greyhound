@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
 using Betfair.Services.Account;
-using Betfair.Services.ML;
 using Betfair.Models.Account;
 
 namespace Betfair.Controllers;
@@ -10,16 +9,13 @@ namespace Betfair.Controllers;
 public class PlaceOrderController : ControllerBase
 {
     private readonly IPlaceOrderService _placeOrderService;
-    private readonly IMLPredictionService _mlPredictionService;
     private readonly ILogger<PlaceOrderController> _logger;
 
     public PlaceOrderController(
-        IPlaceOrderService placeOrderService, 
-        IMLPredictionService mlPredictionService,
+        IPlaceOrderService placeOrderService,
         ILogger<PlaceOrderController> logger)
     {
         _placeOrderService = placeOrderService;
-        _mlPredictionService = mlPredictionService;
         _logger = logger;
     }
 

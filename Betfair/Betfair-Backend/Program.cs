@@ -5,9 +5,6 @@ using Betfair.AutomatedServices;
 using Betfair.Handlers;
 using Betfair.Services.Account;
 using Betfair.Services.HistoricalData;
-using Betfair.Services.ML;
-using Betfair.Services.Simulation;
-using Betfair.Extensions;
 using Betfair.Settings;
 using Microsoft.AspNetCore.Connections;
 using Microsoft.EntityFrameworkCore;
@@ -89,12 +86,6 @@ builder.Services.AddSingleton(new HistoricalDataDb(connectionString));
 var simulationConnectionString = builder.Configuration.GetConnectionString("SimulationDatabase") ?? "Data Source=simulation.db";
 builder.Services.AddDbContext<SimulationDbContext>(options =>
     options.UseSqlite(simulationConnectionString));
-
-// Add ML services
-builder.Services.AddMLServices(builder.Configuration);
-
-// Add simulation services
-builder.Services.AddScoped<IBettingSimulationService, BettingSimulationService>();
 
 // Register scoped services
 builder.Services.AddScoped<CompetitionAutomationService>();
