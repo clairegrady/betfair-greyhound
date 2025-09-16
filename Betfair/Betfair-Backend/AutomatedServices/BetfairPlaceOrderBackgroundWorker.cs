@@ -1,5 +1,6 @@
 using Betfair.AutomationServices;
 using Betfair.Handlers;
+using Betfair.Models.Account;
 using Betfair.Services.Account;
 using Betfair.Services;
 
@@ -67,8 +68,7 @@ public class BetfairPlaceOrderBackgroundWorker : BackgroundService
             }
             //await _databaseService.DisplayMarketBooks(currentTennisMarketIds);
 
-            // Comment out the problematic line temporarily
-            // await _placeOrderService.PlaceOrdersAsync("1.247146226", "10109527", 1.23, 1.00, "BACK");
+            //await _placeOrderService.PlaceOrdersAsync(new PlaceOrderRequest("1.247146226", "10109527", 1.23, 1.00, "BACK"));
 
             // var instructions = new List<CancelInstruction>
             // {

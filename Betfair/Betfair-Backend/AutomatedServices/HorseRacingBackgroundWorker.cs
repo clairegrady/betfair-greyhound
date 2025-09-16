@@ -67,7 +67,7 @@ namespace Betfair.AutomatedServices
                 }
 
                 var accountFundsJson = await _accountService.GetAccountFundsAsync();
-                Console.WriteLine("##########################################################");
+                //Console.WriteLine("##########################################################");
                 Console.WriteLine(accountFundsJson);
                 DisplayHandler.DisplayAccountData(accountFundsJson);
 

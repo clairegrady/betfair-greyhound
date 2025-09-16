@@ -12,6 +12,7 @@ public class ListMarketCatalogueDb
 
     public async Task InsertMarketsIntoDatabase(List<MarketCatalogue> marketCatalogues)
     {
+        Console.WriteLine("##################################################################");
         using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync();
 
@@ -48,8 +49,8 @@ public class ListMarketCatalogueDb
             command.Parameters.AddWithValue("$EventName", marketCatalogue.Event?.Name ?? (object)DBNull.Value);
             command.Parameters.AddWithValue("$CountryCode", marketCatalogue.Event?.CountryCode ?? (object)DBNull.Value);
             command.Parameters.AddWithValue("$Timezone", marketCatalogue.Event?.Timezone ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("$OpenDate", marketCatalogue.Event?.OpenDate.HasValue == true 
-                ? (object)marketCatalogue.Event.OpenDate.Value.ToString("yyyy-MM-ddTHH:mm:ssZ") 
+            command.Parameters.AddWithValue("$OpenDate", marketCatalogue.Event?.OpenDate.HasValue == true
+                ? (object)marketCatalogue.Event.OpenDate.Value.ToString("yyyy-MM-ddTHH:mm:ssZ")
                 : DBNull.Value);
 
             command.Parameters.AddWithValue("$EventTypeId", marketCatalogue.EventType?.Id ?? (object)DBNull.Value);

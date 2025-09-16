@@ -54,11 +54,11 @@ public class MarketBookDb
     }
     public async Task InsertHorseMarketBooksIntoDatabase(List<MarketBook<RunnerFlat>> marketBooks)
 {
-    Console.WriteLine($"🐎 InsertHorseMarketBooksIntoDatabase called with {marketBooks?.Count ?? 0} market books");
+    //Console.WriteLine($"🐎 InsertHorseMarketBooksIntoDatabase called with {marketBooks?.Count ?? 0} market books");
     
     if (marketBooks == null || !marketBooks.Any())
     {
-        Console.WriteLine("❌ No market books provided - returning early");
+        //Console.WriteLine("❌ No market books provided - returning early");
         return;
     }
 
@@ -74,16 +74,16 @@ public class MarketBookDb
         foreach (var marketBook in marketBooks)
         {
             string marketId = marketBook.MarketId;
-            Console.WriteLine($"📊 Processing market: {marketId}");
+            //Console.WriteLine($"📊 Processing market: {marketId}");
 
             if (string.IsNullOrEmpty(marketId))
             {
-                Console.WriteLine("⚠️ Skipping market with empty MarketId");
+                //Console.WriteLine("⚠️ Skipping market with empty MarketId");
                 skippedMarketBooks++;
                 continue;
             }
 
-            Console.WriteLine($"🏇 Processing market: {marketId} with {marketBook.Runners?.Count ?? 0} runners");
+            //Console.WriteLine($"🏇 Processing market: {marketId} with {marketBook.Runners?.Count ?? 0} runners");
 
             var marketInfo = await GetMarketNameAndEventNameByMarketId(connection, marketId);
             string marketName = marketInfo?.MarketName ?? "Unknown";
@@ -92,7 +92,7 @@ public class MarketBookDb
             {
                 if (runner.SelectionId == null)
                 {
-                    Console.WriteLine("⚠️ Skipping runner with null SelectionId");
+                    //Console.WriteLine("⚠️ Skipping runner with null SelectionId");
                     continue;
                 }
 
@@ -105,11 +105,11 @@ public class MarketBookDb
                 {
                     // Delete this specific horse's old record
                     await DeleteExistingHorseRecord(connection, marketId, runner.SelectionId);
-                    Console.WriteLine($"🔄 Replacing existing data for horse {runner.SelectionId} in market {marketId}");
+                    //Console.WriteLine($"🔄 Replacing existing data for horse {runner.SelectionId} in market {marketId}");
                 }
 
                 // Log the OwnerName for debugging purposes
-                Console.WriteLine($"✅ Inserting Runner: SelectionId={runner.SelectionId}, Name={runner.RunnerName}, OwnerName={runner.OwnerName}");
+               // Console.WriteLine($"✅ Inserting Runner: SelectionId={runner.SelectionId}, Name={runner.RunnerName}, OwnerName={runner.OwnerName}");
 
                 var paramValues = new Dictionary<string, object?>
                 {
@@ -185,7 +185,7 @@ public class MarketBookDb
         }
 
         await transaction.CommitAsync();
-        Console.WriteLine($"✅ Successfully processed {successfulRunnerInserts} runners across {marketBooks.Count} market books.");
+        //Console.WriteLine($"✅ Successfully processed {successfulRunnerInserts} runners across {marketBooks.Count} market books.");
     }
     catch (Exception ex)
     {
@@ -223,22 +223,22 @@ public class MarketBookDb
             foreach (var marketBook in marketBooks)
             {
                 string marketId = marketBook.MarketId;
-                Console.WriteLine($"💰 Processing market {marketId} with {marketBook.Runners?.Count ?? 0} runners for back/lay prices");
+                //Console.WriteLine($"💰 Processing market {marketId} with {marketBook.Runners?.Count ?? 0} runners for back/lay prices");
                 processedMarkets++;
 
                 foreach (var runner in marketBook.Runners)
                 {
-                    Console.WriteLine($"🏃 Processing runner {runner.SelectionId} with exchange data: {runner.Exchange != null}");
+                    //Console.WriteLine($"🏃 Processing runner {runner.SelectionId} with exchange data: {runner.Exchange != null}");
 
                     if (runner.Exchange != null)
                     {
-                        Console.WriteLine($"📈 Runner {runner.SelectionId} has {runner.Exchange.AvailableToBack?.Count ?? 0} back prices and {runner.Exchange.AvailableToLay?.Count ?? 0} lay prices");
+                        //Console.WriteLine($"📈 Runner {runner.SelectionId} has {runner.Exchange.AvailableToBack?.Count ?? 0} back prices and {runner.Exchange.AvailableToLay?.Count ?? 0} lay prices");
 
                         foreach (var back in runner.Exchange.AvailableToBack)
                         {
                             if (await IsDataExist(connection, "MarketBookBackPrices", marketId, runner.SelectionId, back.Price))
                             {
-                                Console.WriteLine($"⚠️ Skipping duplicate Back bet data for Runner {runner.SelectionId}: Price = {back.Price}");
+                                //Console.WriteLine($"⚠️ Skipping duplicate Back bet data for Runner {runner.SelectionId}: Price = {back.Price}");
                                 continue;
                             }
 
@@ -259,14 +259,14 @@ public class MarketBookDb
 
                             await priceCommand.ExecuteNonQueryAsync();
                             totalBackPrices++;
-                            Console.WriteLine($"✅ Inserted back price: Market={marketId}, Runner={runner.SelectionId}, Price={back.Price}, Size={back.Size}");
+                            //Console.WriteLine($"✅ Inserted back price: Market={marketId}, Runner={runner.SelectionId}, Price={back.Price}, Size={back.Size}");
                         }
 
                         foreach (var lay in runner.Exchange.AvailableToLay)
                         {
                             if (await IsDataExist(connection, "MarketBookLayPrices", marketId, runner.SelectionId, lay.Price))
                             {
-                                Console.WriteLine($"⚠️ Skipping duplicate Lay bet data for Runner {runner.SelectionId}: Price = {lay.Price}");
+                                //Console.WriteLine($"⚠️ Skipping duplicate Lay bet data for Runner {runner.SelectionId}: Price = {lay.Price}");
                                 continue;
                             }
 
@@ -287,18 +287,18 @@ public class MarketBookDb
 
                             await priceCommand.ExecuteNonQueryAsync();
                             totalLayPrices++;
-                            Console.WriteLine($"✅ Inserted lay price: Market={marketId}, Runner={runner.SelectionId}, Price={lay.Price}, Size={lay.Size}");
+                            //Console.WriteLine($"✅ Inserted lay price: Market={marketId}, Runner={runner.SelectionId}, Price={lay.Price}, Size={lay.Size}");
                         }
                     }
                     else
                     {
-                        Console.WriteLine($"❌ Runner {runner.SelectionId} has no exchange data");
+                        //Console.WriteLine($"❌ Runner {runner.SelectionId} has no exchange data");
                     }
                 }
             }
             await transaction.CommitAsync();
-            Console.WriteLine($"🎉 Market book back/lay prices inserted successfully!");
-            Console.WriteLine($"📊 Total processed: {processedMarkets} markets, {totalBackPrices} back prices, {totalLayPrices} lay prices");
+            //Console.WriteLine($"🎉 Market book back/lay prices inserted successfully!");
+            //Console.WriteLine($"📊 Total processed: {processedMarkets} markets, {totalBackPrices} back prices, {totalLayPrices} lay prices");
         }
         catch (Exception ex)
         {
@@ -470,5 +470,57 @@ public class MarketBookDb
     public async Task DeleteFinishedRacesAsync()
     {
         // Method removed as per request to avoid deletion logic.
+    }
+
+    public async Task<object> GetHorseBackAndLayOddsAsync(long selectionId)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        // First, get horse details from HorseMarketBook
+        var horseQuery = @"
+            SELECT MarketId, MarketName, EventName, RUNNER_NAME 
+            FROM HorseMarketBook 
+            WHERE SelectionId = @SelectionId 
+            LIMIT 1";
+
+        var horseInfo = await connection.QueryFirstOrDefaultAsync(horseQuery, new { SelectionId = selectionId });
+
+        if (horseInfo == null)
+        {
+            return new { Error = $"Horse with SelectionId {selectionId} not found" };
+        }
+
+        // Get back odds from MarketBookBackPrices table
+        var backOddsQuery = @"
+            SELECT Price, Size, MarketId
+            FROM MarketBookBackPrices 
+            WHERE SelectionId = @SelectionId 
+            ORDER BY Price DESC";
+
+        var backOdds = await connection.QueryAsync(backOddsQuery, new { SelectionId = selectionId });
+
+        // Get lay odds from MarketBookLayPrices table
+        var layOddsQuery = @"
+            SELECT Price, Size, MarketId
+            FROM MarketBookLayPrices 
+            WHERE SelectionId = @SelectionId 
+            ORDER BY Price ASC";
+
+        var layOdds = await connection.QueryAsync(layOddsQuery, new { SelectionId = selectionId });
+
+        return new
+        {
+            Horse = new
+            {
+                SelectionId = selectionId,
+                Name = horseInfo.RUNNER_NAME,
+                MarketId = horseInfo.MarketId,
+                MarketName = horseInfo.MarketName,
+                EventName = horseInfo.EventName
+            },
+            BackOdds = backOdds.Select(b => new { Price = b.Price, Size = b.Size, MarketId = b.MarketId }),
+            LayOdds = layOdds.Select(l => new { Price = l.Price, Size = l.Size, MarketId = l.MarketId })
+        };
     }
 }

@@ -5,7 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Betfair.AutomationServices;
 
-namespace Betfair.AutomationServices
+namespace Betfair.AutomatedServices
 {
     public class MarketBackgroundWorker : BackgroundService
     {
