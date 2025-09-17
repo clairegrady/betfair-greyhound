@@ -26,19 +26,25 @@ class LayBettingStrategy:
         Returns:
             tuple: (is_eligible, reason, eligible_horses)
         """
+        # Filter out horses without odds for analysis
+        horses_with_odds = race_data.dropna(subset=[odds_column])
+        
+        # Check 1: Must have at least 4 horses total
+        if len(race_data) < 4:
+            return False, f"Less than 4 horses (total: {len(race_data)})", None
+        
+        # Check 2: Must have at least 4 horses with odds
+        if len(horses_with_odds) < 4:
+            return False, f"Less than 4 horses with odds (total: {len(race_data)}, with odds: {len(horses_with_odds)})", None
+        
         # Sort by odds (lowest first)
-        race_data = race_data.sort_values(odds_column)
-        total_horses = len(race_data)
+        horses_with_odds = horses_with_odds.sort_values(odds_column)
         
-        # Check 1: Must have at least 4 horses (minimum for meaningful analysis)
-        if total_horses < 4:
-            return False, "Less than 4 horses", None
+        # Check 3: Get top half horses (lowest odds)
+        top_half_count = len(horses_with_odds) // 2
+        top_half = horses_with_odds.head(top_half_count)
         
-        # Check 2: Get top half horses (lowest odds)
-        top_half_count = total_horses // 2
-        top_half = race_data.head(top_half_count)
-        
-        # Check 3: Calculate odds variance in top half
+        # Check 4: Calculate odds variance in top half
         top_half_odds = top_half[odds_column].values
         odds_std = np.std(top_half_odds)
         
@@ -46,10 +52,10 @@ class LayBettingStrategy:
         if odds_std < self.std_threshold:
             return False, f"Top half odds too similar (std: {odds_std:.2f})", None
         
-        # Check 4: Get bottom half horses (highest odds)
-        bottom_half = race_data.iloc[top_half_count:]  # Bottom half (0-indexed)
+        # Check 5: Get bottom half horses (highest odds)
+        bottom_half = horses_with_odds.iloc[top_half_count:]  # Bottom half (0-indexed)
         
-        # Check 5: Filter bottom half horses with odds <= max_odds
+        # Check 6: Filter bottom half horses with odds <= max_odds
         eligible_horses = bottom_half[bottom_half[odds_column] <= self.max_odds]
         
         if len(eligible_horses) == 0:
