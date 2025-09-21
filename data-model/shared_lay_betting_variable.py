@@ -1,41 +1,78 @@
 """
-Shared lay betting functionality for both backtesting and live betting
+Shared lay betting functionality with variable max odds and std thresholds
+Based on field size for optimal performance across all race types
 """
 import numpy as np
 import pandas as pd
 from typing import Tuple, List, Dict, Any, Optional
 
 
-class LayBettingStrategy:
+class LayBettingStrategyVariable:
     """
-    Shared lay betting strategy logic used by both backtest and live scripts
+    Lay betting strategy with variable max odds and std thresholds based on field size
     """
     
-    def __init__(self, std_threshold: float = 1.5, max_odds: float = 30.0):
-        self.std_threshold = std_threshold
-        self.max_odds = max_odds
-    
-    def analyze_race_eligibility(self, race_data: pd.DataFrame, odds_column: str = 'FixedWinOpen_Reference') -> Tuple[bool, str, Optional[pd.DataFrame]]:
+    def __init__(self, base_std_threshold: float = 1.0, base_max_odds: float = 30.0):
         """
-        Check if a race meets our lay betting criteria
+        Initialize the variable strategy
+        
+        Args:
+            base_std_threshold: Base std threshold for 12-horse field (default: 1.0)
+            base_max_odds: Base max odds for 12-horse field (default: 30.0)
+        """
+        self.base_std_threshold = base_std_threshold
+        self.base_max_odds = base_max_odds
+    
+    def calculate_variable_max_odds(self, field_size: int) -> float:
+        """
+        Calculate max odds based on field size
+        Formula: MaxOddsAllowed = base_max_odds × (field_size / 12)
+        
+        Examples:
+        - 6 horses → 30 × (6/12) = 15.0
+        - 12 horses → 30 × (12/12) = 30.0  
+        - 18 horses → 30 × (18/12) = 45.0
+        """
+        return self.base_max_odds * (field_size / 12.0)
+    
+    def calculate_variable_std_threshold(self, field_size: int) -> float:
+        """
+        Calculate std threshold based on field size
+        Formula: StdThreshold = base_std × (field_size / 12)
+        
+        Examples:
+        - 6 horses → 1.0 × (6/12) = 0.5
+        - 12 horses → 1.0 × (12/12) = 1.0
+        - 18 horses → 1.0 × (18/12) = 1.5
+        """
+        return self.base_std_threshold * (field_size / 12.0)
+    
+    def analyze_race_eligibility(self, race_data: pd.DataFrame, odds_column: str = 'FixedWinOpen_Reference') -> Tuple[bool, str, Optional[pd.DataFrame], Optional[float], Optional[float]]:
+        """
+        Check if a race meets our lay betting criteria with variable max odds AND std threshold
         
         Args:
             race_data: DataFrame with race odds data
             odds_column: Column name containing the odds (for flexibility)
             
         Returns:
-            tuple: (is_eligible, reason, eligible_horses)
+            tuple: (is_eligible, reason, eligible_horses, variable_max_odds, variable_std_threshold)
         """
         # Filter out horses without odds for analysis
         horses_with_odds = race_data.dropna(subset=[odds_column])
         
-        # Check 1: Must have at least 4 horses total
-        if len(race_data) < 4:
-            return False, f"Less than 4 horses (total: {len(race_data)})", None
+        # Check 1: Must have at least 6 horses total
+        if len(race_data) < 6:
+            return False, f"Less than 6 horses (total: {len(race_data)})", None, None, None
         
-        # Check 2: Must have at least 4 horses with odds
-        if len(horses_with_odds) < 4:
-            return False, f"Less than 4 horses with odds (total: {len(race_data)}, with odds: {len(horses_with_odds)})", None
+        # Check 2: Must have at least 6 horses with odds
+        if len(horses_with_odds) < 6:
+            return False, f"Less than 6 horses with odds (total: {len(race_data)}, with odds: {len(horses_with_odds)})", None, None, None
+        
+        # Calculate variable parameters based on field size
+        field_size = len(horses_with_odds)
+        variable_max_odds = self.calculate_variable_max_odds(field_size)
+        variable_std_threshold = self.calculate_variable_std_threshold(field_size)
         
         # Sort by odds (lowest first)
         horses_with_odds = horses_with_odds.sort_values(odds_column)
@@ -48,58 +85,20 @@ class LayBettingStrategy:
         top_half_odds = top_half[odds_column].values
         odds_std = np.std(top_half_odds)
         
-        # If standard deviation is less than threshold, odds are too similar
-        if odds_std < self.std_threshold:
-            return False, f"Top half odds too similar (std: {odds_std:.2f})", None
+        # If standard deviation is less than variable threshold, odds are too similar
+        if odds_std < variable_std_threshold:
+            return False, f"Top half odds too similar (std: {odds_std:.2f} < {variable_std_threshold:.2f})", None, variable_max_odds, variable_std_threshold
         
         # Check 5: Get bottom half horses (highest odds)
         bottom_half = horses_with_odds.iloc[top_half_count:]  # Bottom half (0-indexed)
         
-        # Check 6: Filter bottom half horses with odds <= max_odds
-        eligible_horses = bottom_half[bottom_half[odds_column] <= self.max_odds]
+        # Check 6: Filter bottom half horses with odds <= variable_max_odds
+        eligible_horses = bottom_half[bottom_half[odds_column] <= variable_max_odds]
         
         if len(eligible_horses) == 0:
-            return False, f"No horses in bottom half with odds <= {self.max_odds}:1", None
+            return False, f"No horses in bottom half with odds <= {variable_max_odds:.1f}:1 (field size: {field_size})", None, variable_max_odds, variable_std_threshold
         
-        return True, f"Eligible - {len(eligible_horses)} horses to lay", eligible_horses
-    
-    def analyze_race_eligibility_with_gap(self, race_data: pd.DataFrame, odds_column: str = 'FixedWinOpen_Reference') -> Tuple[bool, str, Optional[pd.DataFrame]]:
-        """
-        Check race eligibility with gap strategy fallback
-        
-        First checks if top half std dev is below threshold, then uses gap strategy
-        """
-        horses_with_odds = race_data.dropna(subset=[odds_column]).sort_values(odds_column)
-        
-        # Need at least 6 horses for gap strategy
-        if len(horses_with_odds) < 6:
-            return False, f"Gap strategy needs at least 6 horses (found {len(horses_with_odds)})", None
-        
-        top_half_count = len(horses_with_odds) // 2
-        top_half_odds = horses_with_odds.iloc[:top_half_count][odds_column]
-        
-        # Calculate std dev of top half
-        top_half_std = top_half_odds.std()
-        
-        # Only use gap strategy if top half std dev is below threshold
-        if top_half_std >= self.std_threshold:
-            # Use normal strategy - top half has sufficient variance
-            return self.analyze_race_eligibility(race_data, odds_column)
-        
-        # Top half std dev is too low - check for odds gap
-        last_top_half_odds = horses_with_odds.iloc[top_half_count - 1][odds_column]
-        first_bottom_half_odds = horses_with_odds.iloc[top_half_count][odds_column]
-        
-        # Check if bottom half starts at least double the top half
-        if first_bottom_half_odds >= (last_top_half_odds * 2):
-            # Get bottom half horses with odds <= max_odds
-            bottom_half = horses_with_odds.iloc[top_half_count:]
-            eligible_horses = bottom_half[bottom_half[odds_column] <= self.max_odds]
-            
-            if len(eligible_horses) > 0:
-                return True, f"Gap strategy - {len(eligible_horses)} horses (top half std: {top_half_std:.2f}, gap: {last_top_half_odds:.1f} to {first_bottom_half_odds:.1f})", eligible_horses
-        
-        return False, f"No gap found (top half std: {top_half_std:.2f}, last top: {last_top_half_odds:.1f}, first bottom: {first_bottom_half_odds:.1f})", None
+        return True, f"Eligible - {len(eligible_horses)} horses to lay (max odds: {variable_max_odds:.1f}:1, std: {variable_std_threshold:.1f})", eligible_horses, variable_max_odds, variable_std_threshold
     
     def calculate_lay_bet_profit(self, horse_odds: float, horse_finished_position: float, stake: float = 1) -> float:
         """
@@ -146,7 +145,7 @@ class LayBettingStrategy:
     
     def get_strategy_description(self) -> str:
         """Get a description of the current strategy"""
-        return f"Lay betting strategy: Std threshold={self.std_threshold}, Max odds={self.max_odds}:1"
+        return f"Variable lay betting strategy: Base std={self.base_std_threshold}, Base max odds={self.base_max_odds}:1 (scales with field size)"
 
 
 class LayBettingResults:

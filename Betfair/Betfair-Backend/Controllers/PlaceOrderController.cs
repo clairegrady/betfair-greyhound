@@ -35,5 +35,4 @@ public class PlaceOrderController : ControllerBase
             return StatusCode(500, $"Error placing bet: {ex.Message}");
         }
     }
-
 }

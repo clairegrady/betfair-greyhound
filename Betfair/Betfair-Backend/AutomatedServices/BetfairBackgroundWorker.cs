@@ -39,7 +39,7 @@ public class BetfairBackgroundWorker : BackgroundService
 
             await _databaseService.DisplayMarketBooks(currentNbaMarketIds);
             
-            await Task.Delay(TimeSpan.FromSeconds(120), stoppingToken);
+            await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
         }
     }
 }

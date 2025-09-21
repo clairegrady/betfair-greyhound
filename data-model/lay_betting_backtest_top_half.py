@@ -1,9 +1,10 @@
 """
-Lay Betting Backtest Script v2 - Uses shared functionality
+Lay Betting Backtest Script - TOP HALF VERSION
+Lays $1 on the top half horses (lowest odds) instead of bottom half
 """
 import pandas as pd
 import numpy as np
-from shared_lay_betting import LayBettingStrategy, LayBettingResults
+from shared_lay_betting import LayBettingResults
 from collections import defaultdict
 import logging
 
@@ -12,14 +13,98 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
-class LayBettingBacktest:
+class LayBettingTopHalfStrategy:
     """
-    Lay betting backtest using shared strategy logic
+    Lay betting strategy that bets on the TOP HALF (lowest odds) horses
+    """
+    
+    def __init__(self, std_threshold: float = 1.5, max_odds: float = 25.0):
+        self.std_threshold = std_threshold
+        self.max_odds = max_odds
+    
+    def analyze_race_eligibility(self, race_data: pd.DataFrame, odds_column: str = 'FixedWinClose_Reference') -> tuple:
+        """
+        Check if a race meets our lay betting criteria for TOP HALF horses
+        
+        Args:
+            race_data: DataFrame with race odds data
+            odds_column: Column name containing the odds
+            
+        Returns:
+            tuple: (is_eligible, reason, eligible_horses)
+        """
+        # Filter out horses without odds for analysis
+        horses_with_odds = race_data.dropna(subset=[odds_column])
+        
+        # Check 1: Must have at least 4 horses total
+        if len(race_data) < 4:
+            return False, f"Less than 4 horses (total: {len(race_data)})", None
+        
+        # Check 2: Must have at least 4 horses with odds
+        if len(horses_with_odds) < 4:
+            return False, f"Less than 4 horses with odds (total: {len(race_data)}, with odds: {len(horses_with_odds)})", None
+        
+        # Sort by odds (lowest first)
+        horses_with_odds = horses_with_odds.sort_values(odds_column)
+        
+        # Check 3: Get top half horses (lowest odds) - these are the ones we'll bet on
+        total_horses = len(horses_with_odds)
+        top_half_count = total_horses // 2
+        
+        # For odd numbers, bet on the greater half (e.g., 7 horses = bet on top 4)
+        if total_horses % 2 == 1:
+            top_half_count += 1
+            
+        top_half = horses_with_odds.head(top_half_count)
+        
+        # Check 4: Calculate odds variance in top half
+        top_half_odds = top_half[odds_column].values
+        odds_std = np.std(top_half_odds)
+        
+        # If standard deviation is less than threshold, odds are too similar
+        if odds_std < self.std_threshold:
+            return False, f"Top half odds too similar (std: {odds_std:.2f})", None
+        
+        # Check 5: Filter top half horses with odds <= max_odds
+        eligible_horses = top_half[top_half[odds_column] <= self.max_odds]
+        
+        if len(eligible_horses) == 0:
+            return False, f"No horses in top half with odds <= {self.max_odds}:1", None
+        
+        return True, f"Eligible - {len(eligible_horses)} horses to lay", eligible_horses
+    
+    def calculate_lay_bet_profit(self, horse_odds: float, finishing_pos: int, stake: float) -> float:
+        """
+        Calculate profit from a lay bet
+        
+        Args:
+            horse_odds: The odds we laid at
+            finishing_pos: Where the horse finished (1 = won, 2+ = lost)
+            stake: Amount we staked
+            
+        Returns:
+            float: Profit (positive if we won the bet, negative if we lost)
+        """
+        if finishing_pos == 1:  # Horse won - we lose the bet
+            # We lose: stake * (odds - 1)
+            return -stake * (horse_odds - 1)
+        else:  # Horse lost - we win the bet
+            # We win: stake
+            return stake
+    
+    def get_strategy_description(self) -> str:
+        """Get a description of the strategy"""
+        return f"Top Half Lay Strategy: Std threshold {self.std_threshold}, Max odds {self.max_odds}:1"
+
+
+class LayBettingTopHalfBacktest:
+    """
+    Lay betting backtest using TOP HALF strategy
     """
     
     def __init__(self, csv_file: str, std_threshold: float = 1.5, max_odds: float = 25.0):
         self.csv_file = csv_file
-        self.strategy = LayBettingStrategy(std_threshold, max_odds)
+        self.strategy = LayBettingTopHalfStrategy(std_threshold, max_odds)
         self.results = LayBettingResults()
         self.df = None
         self.race_stats = defaultdict(list)
@@ -36,7 +121,7 @@ class LayBettingBacktest:
     
     def run_backtest(self, stake_per_bet: float = 1, verbose: bool = True):
         """
-        Run the backtest using shared strategy logic
+        Run the backtest using TOP HALF strategy
         
         Args:
             stake_per_bet: Amount to stake per bet
@@ -49,13 +134,13 @@ class LayBettingBacktest:
         total_races = len(race_groups)
         
         if verbose:
-            logger.info(f"🏁 Starting backtest on {total_races} races")
+            logger.info(f"🏁 Starting TOP HALF backtest on {total_races} races")
             logger.info(f"📋 Strategy: {self.strategy.get_strategy_description()}")
         
         for (meeting, date, race_num), race_data in race_groups:
-            # Use shared strategy to analyze race eligibility
+            # Use strategy to analyze race eligibility
             is_eligible, reason, eligible_horses = self.strategy.analyze_race_eligibility(
-                race_data, 'FixedWinOpen_Reference'
+                race_data, 'FixedWinClose_Reference'
             )
             
             if not is_eligible:
@@ -63,12 +148,12 @@ class LayBettingBacktest:
                     logger.debug(f"❌ {meeting} {date} R{race_num}: {reason}")
                 continue
             
-            # Place lay bets on eligible horses
+            # Place lay bets on eligible horses (TOP HALF)
             for _, horse in eligible_horses.iterrows():
-                horse_odds = horse['FixedWinOpen_Reference']
+                horse_odds = horse['FixedWinClose_Reference']
                 finishing_pos = horse['finishingPosition']
                 
-                # Calculate profit using shared strategy
+                # Calculate profit using strategy
                 profit = self.strategy.calculate_lay_bet_profit(
                     horse_odds, finishing_pos, stake_per_bet
                 )
@@ -100,22 +185,22 @@ class LayBettingBacktest:
 
 def test_std_thresholds():
     """Test different standard deviation thresholds"""
-    csv_file = "/Users/clairegrady/RiderProjects/betfair/data-model/scripts/Runner_Result_2025-09-07.csv"
+    csv_file = "/Users/clairegrady/RiderProjects/betfair/data-model/Runner_Result_2025-09-07.csv"
     
     std_thresholds = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0]
     results = []
     
-    logger.info("🔬 Testing different std thresholds...")
+    logger.info("🔬 Testing different std thresholds for TOP HALF strategy...")
     
     for std_threshold in std_thresholds:
-        backtest = LayBettingBacktest(csv_file, std_threshold, 20.0)
+        backtest = LayBettingTopHalfBacktest(csv_file, std_threshold, 20.0)
         backtest.run_backtest(stake_per_bet=1, verbose=False)
         
         # Count eligible races
         race_groups = backtest.get_race_groups()
         eligible_count = 0
         for (meeting, date, race_num), race_data in race_groups:
-            is_eligible, _, _ = backtest.strategy.analyze_race_eligibility(race_data, 'FixedWinOpen_Reference')
+            is_eligible, _, _ = backtest.strategy.analyze_race_eligibility(race_data, 'FixedWinClose_Reference')
             if is_eligible:
                 eligible_count += 1
         
@@ -135,13 +220,13 @@ def test_std_thresholds():
 
 def comprehensive_analysis():
     """Test all combinations of std thresholds and max odds"""
-    csv_file = "/Users/clairegrady/RiderProjects/betfair/data-model/scripts/Runner_Result_2025-09-07.csv"
+    csv_file = "/Users/clairegrady/RiderProjects/betfair/data-model/Runner_Result_2025-09-07.csv"
     
     std_thresholds = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0]
     max_odds = [20, 25, 30]
     results = []
     
-    logger.info("🔬 COMPREHENSIVE LAY BETTING ANALYSIS")
+    logger.info("🔬 COMPREHENSIVE TOP HALF LAY BETTING ANALYSIS")
     logger.info("=" * 80)
     logger.info(f"Testing {len(std_thresholds)} std thresholds × {len(max_odds)} max odds = {len(std_thresholds) * len(max_odds)} combinations")
     logger.info("=" * 80)
@@ -153,14 +238,14 @@ def comprehensive_analysis():
         for std_threshold in std_thresholds:
             logger.info(f"📊 Std: {std_threshold}, Max Odds: {max_odd}")
             
-            backtest = LayBettingBacktest(csv_file, std_threshold, max_odd)
+            backtest = LayBettingTopHalfBacktest(csv_file, std_threshold, max_odd)
             backtest.run_backtest(stake_per_bet=1, verbose=False)
             
             # Count eligible races
             race_groups = backtest.get_race_groups()
             eligible_count = 0
             for (meeting, date, race_num), race_data in race_groups:
-                is_eligible, _, _ = backtest.strategy.analyze_race_eligibility(race_data, 'FixedWinOpen_Reference')
+                is_eligible, _, _ = backtest.strategy.analyze_race_eligibility(race_data, 'FixedWinClose_Reference')
                 if is_eligible:
                     eligible_count += 1
             
@@ -178,7 +263,7 @@ def comprehensive_analysis():
     
     # Save results to CSV
     df = pd.DataFrame(results)
-    csv_filename = "comprehensive_lay_analysis_results_v2.csv"
+    csv_filename = "comprehensive_lay_analysis_results_top_half.csv"
     df.to_csv(csv_filename, index=False)
     
     logger.info(f"\n💾 Results saved to {csv_filename}")

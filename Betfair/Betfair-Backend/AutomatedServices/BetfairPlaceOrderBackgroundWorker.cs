@@ -76,7 +76,7 @@ public class BetfairPlaceOrderBackgroundWorker : BackgroundService
             // };
             // await _orderService.CancelOrderAsync("1.237598344", instructions);
 
-            await Task.Delay(TimeSpan.FromSeconds(120), stoppingToken);
+            await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
         }
     }
 }

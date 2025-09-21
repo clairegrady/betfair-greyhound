@@ -20,6 +20,14 @@ public class ReplaceInstruction
     public double size { get; set; }   // New size for the bet
     public string side { get; set; }   // "BACK" or "LAY" (the side of the bet)
 }
+public class ReplaceOrdersRequest
+{
+    public string MarketId { get; set; }
+    public List<ReplaceInstruction> Instructions { get; set; }
+    public string CustomerRef { get; set; }
+    public MarketVersion MarketVersion { get; set; }
+    public bool Async { get; set; } = false;
+}
 
 public class MarketVersion
 {

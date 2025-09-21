@@ -120,7 +120,7 @@ public class MarketApiService : IMarketApiService
             @params = new
             {
                 marketIds = limitedMarketIds,
-                priceProjection = new { priceData = new[] { "EX_BEST_OFFERS", "EX_TRADED" } }
+                priceProjection = new { priceData = new[] { "EX_BEST_OFFERS", "EX_TRADED", "SP_AVAILABLE", "SP_TRADED" } }
             },
             id = 1
         };
@@ -159,7 +159,7 @@ public class MarketApiService : IMarketApiService
                 marketStatuses = new[] { "OPEN", "ACTIVE", "SUSPENDED" },
                 // Use rotating time windows instead of fixed 7-day range
                 marketStartTime = new { from = fromTime, to = toTime },
-                marketCountries = new[] { "AU", "NZ" } // Include both AU and NZ
+                //marketCountries = new[] { "AU", "NZ" } // Include both AU and NZ
             };
 
             var requestBody = new

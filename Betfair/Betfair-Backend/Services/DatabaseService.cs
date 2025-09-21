@@ -1,4 +1,5 @@
 using Betfair.Handlers;
+using Betfair.Models;
 using Betfair.Models.Event;
 using Betfair.Models.Market;
 using Microsoft.Data.Sqlite;

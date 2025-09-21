@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 
 def main():
     """Main automation loop"""
-    # Configuration
     db_path = "/Users/clairegrady/RiderProjects/betfair/Betfair/Betfair-Backend/betfairmarket.sqlite"
     api_base_url = "http://localhost:5173"
     
@@ -31,8 +30,8 @@ def main():
         db_path=db_path,
         api_base_url=api_base_url,
         std_threshold=1.5,
-        max_odds=25.0,
-        min_minutes_before_race=0  # Allow betting right up to race start
+        max_odds=20.0,
+        min_minutes_before_race=-6  # Allow betting from 1 minute before to 2 minutes after
     )
     
     logger.info("=== AUTOMATED LAY BETTING STARTED ===")
@@ -53,21 +52,31 @@ def main():
             
             # Check for races and place bets
             automation.scan_and_bet(
-                max_minutes_ahead=20,  # Monitor races within 4 minutes (safer window)
+                max_minutes_ahead=3000,  
                 stake_per_bet=1.0,
                 dry_run=True  
             )
             
-            logger.info(f"Cycle {cycle_count} completed. Waiting 2 minutes...")
-            time.sleep(120)  # Wait 2 minutes (matches backend)
+            # Check status of pending bets
+            automation.check_all_pending_bets()
+            
+            # Pre-race odds check for races starting soon
+            automation.pre_race_odds_check_for_imminent_races()
+            
+            # Clean up old odds data (every 10 cycles to avoid overhead)
+            if cycle_count % 10 == 0:
+                automation.cleanup_old_odds()
+            
+            logger.info(f"Cycle {cycle_count} completed. Waiting 10 seconds...")
+            time.sleep(10)  # Wait 30 seconds (matches backend)
             
         except KeyboardInterrupt:
             logger.info("Automation stopped by user")
             break
         except Exception as e:
             logger.error(f"Error in cycle {cycle_count}: {e}")
-            logger.info("Waiting 30 seconds before retry...")
-            time.sleep(30)  # Shorter wait on error
+            logger.info("Waiting 10 seconds before retry...")
+            time.sleep(10)  # Shorter wait on error
 
 if __name__ == "__main__":
     main()

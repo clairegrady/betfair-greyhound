@@ -45,17 +45,17 @@ namespace Betfair.AutomationServices
             var today = DateTime.UtcNow.Date;
             var marketCatalogueJson =
                 await _marketApiService.ListHorseRacingMarketCatalogueAsync(eventTypeId: "7", openDate: today);
-            Console.WriteLine($"JSON length: {marketCatalogueJson?.Length ?? 0} characters");
+            //Console.WriteLine($"JSON length: {marketCatalogueJson?.Length ?? 0} characters");
 
             // Check for Australian/NZ venues in the raw JSON
             if (marketCatalogueJson?.Contains("AUS") == true)
             {
-                Console.WriteLine("✅ Found 'AUS' in raw JSON");
+                //Console.WriteLine("✅ Found 'AUS' in raw JSON");
             }
 
             if (marketCatalogueJson?.Contains("NZ") == true)
             {
-                Console.WriteLine("✅ Found 'NZ' in raw JSON");
+                //Console.WriteLine("✅ Found 'NZ' in raw JSON");
             }
 
             ApiResponse<MarketCatalogue> apiResponse;
@@ -74,16 +74,16 @@ namespace Betfair.AutomationServices
 
                 if (apiResponse?.Result != null)
                 {
-                    Console.WriteLine(
-                        $"Market catalogues received (apiResponse.Result.Count): {apiResponse.Result.Count}");
+                   // Console.WriteLine(
+                        //$"Market catalogues received (apiResponse.Result.Count): {apiResponse.Result.Count}");
 
                     var marketIds = apiResponse.Result.Select(market => market.MarketId).ToList();
                     var ausNzMarkets = marketIds.Where(id => id.StartsWith("1.2468") || id.StartsWith("1.2469"))
                         .ToList();
-                    Console.WriteLine($"🇦🇺🇳🇿 Australian/NZ markets found: {ausNzMarkets.Count}");
+                    //Console.WriteLine($"🇦🇺🇳🇿 Australian/NZ markets found: {ausNzMarkets.Count}");
                     if (ausNzMarkets.Any())
                     {
-                        Console.WriteLine($"   Sample AUS/NZ market IDs: {string.Join(", ", ausNzMarkets.Take(5))}");
+                        //Console.WriteLine($"   Sample AUS/NZ market IDs: {string.Join(", ", ausNzMarkets.Take(5))}");
                     }
                 }
             }
@@ -169,7 +169,7 @@ namespace Betfair.AutomationServices
             try
             {
                 // Step 1: Fetch and deserialize MarketBook JSON in batches
-                Console.WriteLine($"📞 Processing {marketIds.Count} market IDs in batches of 10");
+               // Console.WriteLine($"📞 Processing {marketIds.Count} market IDs in batches of 10");
 
                 var allMarketBooks = new List<MarketBook<ApiRunner>>();
                 const int batchSize = 10;
@@ -178,14 +178,14 @@ namespace Betfair.AutomationServices
                 for (int i = 0; i < marketIds.Count; i += batchSize)
                 {
                     var batch = marketIds.Skip(i).Take(batchSize).ToList();
-                    Console.WriteLine($"📦 Processing batch {i / batchSize + 1}: {batch.Count} markets");
+                    //Console.WriteLine($"📦 Processing batch {i / batchSize + 1}: {batch.Count} markets");
 
                     var marketBookJson = await _marketApiService.ListMarketBookAsync(batch);
 
-                    Console.WriteLine($"📥 Batch {i / batchSize + 1} Response: {marketBookJson?.Length ?? 0} characters");
+                   // Console.WriteLine($"📥 Batch {i / batchSize + 1} Response: {marketBookJson?.Length ?? 0} characters");
                     if (marketBookJson?.Contains("error") == true)
                     {
-                        Console.WriteLine($"❌ Batch {i / batchSize + 1} Error: {marketBookJson}");
+                       // Console.WriteLine($"❌ Batch {i / batchSize + 1} Error: {marketBookJson}");
                         continue;
                     }
 
@@ -193,21 +193,21 @@ namespace Betfair.AutomationServices
                     if (batchResponse?.Result != null)
                     {
                         allMarketBooks.AddRange(batchResponse.Result);
-                        Console.WriteLine($"✅ Batch {i / batchSize + 1}: Added {batchResponse.Result.Count} markets");
+                        //Console.WriteLine($"✅ Batch {i / batchSize + 1}: Added {batchResponse.Result.Count} markets");
                     }
                 }
 
-                Console.WriteLine($"📊 Total markets collected: {allMarketBooks.Count}");
+                //Console.WriteLine($"📊 Total markets collected: {allMarketBooks.Count}");
 
                 // Now process all accumulated market books
                 if (!allMarketBooks.Any())
                 {
-                    Console.WriteLine("❌ No market books collected from any batch");
+                    //Console.WriteLine("❌ No market books collected from any batch");
                     return new List<RunnerFlat>();
                 }
 
                 var marketBookApiResponse = new ApiResponse<MarketBook<ApiRunner>> { Result = allMarketBooks };
-                Console.WriteLine($"📊 JSON Analysis: Received {marketBookApiResponse?.Result?.Count ?? 0} markets from API");
+                //Console.WriteLine($"📊 JSON Analysis: Received {marketBookApiResponse?.Result?.Count ?? 0} markets from API");
 
                 if (marketBookApiResponse?.Result != null)
                 {
@@ -216,11 +216,11 @@ namespace Betfair.AutomationServices
                         .Select(g => new { MarketId = g.Key, Count = g.Count() })
                         .ToList();
 
-                    Console.WriteLine($"🌍 Market breakdown: {string.Join(", ", marketCounts.Select(m => $"{m.MarketId}:{m.Count}"))}");
+                   // Console.WriteLine($"🌍 Market breakdown: {string.Join(", ", marketCounts.Select(m => $"{m.MarketId}:{m.Count}"))}");
                 }
 
                 // Step 2: Flatten MarketBooks to RunnerFlat objects, COMBINING with catalogue data
-                Console.WriteLine("🔄 Starting to flatten market books to RunnerFlat objects...");
+                //Console.WriteLine("🔄 Starting to flatten market books to RunnerFlat objects...");
                 var flattenedMarketBooks = marketBookApiResponse.Result
                     .Where(book => !string.IsNullOrEmpty(book.MarketId))
                     .Select(book => new MarketBook<RunnerFlat>
@@ -298,17 +298,17 @@ namespace Betfair.AutomationServices
                         }
                     }
 
-                    Console.WriteLine($"📈 Flattening complete: {flattenedMarketBooks.Count} markets processed out of {marketBookApiResponse?.Result?.Count ?? 0} received, with {totalRunnersToInsert} total runners");
+                    //Console.WriteLine($"📈 Flattening complete: {flattenedMarketBooks.Count} markets processed out of {marketBookApiResponse?.Result?.Count ?? 0} received, with {totalRunnersToInsert} total runners");
 
                     await _marketBookDb.InsertHorseMarketBooksIntoDatabase(flattenedMarketBooks);
 
                     // NEW: Also insert the betting prices for the same markets
-                    Console.WriteLine("🎯 Also inserting back/lay prices for the same horse racing markets...");
+                    //Console.WriteLine("🎯 Also inserting back/lay prices for the same horse racing markets...");
                     var apiRunnerMarketBooks = marketBookApiResponse.Result.ToList();
                     await _marketBookDb.InsertMarketBooksIntoDatabase(apiRunnerMarketBooks);
-                    Console.WriteLine("✅ Back/lay prices insertion completed for horse racing markets");
+                    //Console.WriteLine("✅ Back/lay prices insertion completed for horse racing markets");
 
-                    Console.WriteLine("ProcessHorseMarketBooksAsync: InsertHorseMarketBooksIntoDatabase call completed.");
+                   // Console.WriteLine("ProcessHorseMarketBooksAsync: InsertHorseMarketBooksIntoDatabase call completed.");
                 }
 
                 var allFlattenedRunners = flattenedMarketBooks.SelectMany(marketBook => marketBook.Runners).ToList();
@@ -316,7 +316,7 @@ namespace Betfair.AutomationServices
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ Error in ProcessHorseMarketBooksAsync: {ex.Message}");
+                //Console.WriteLine($"❌ Error in ProcessHorseMarketBooksAsync: {ex.Message}");
                 return new List<RunnerFlat>();
             }
         }

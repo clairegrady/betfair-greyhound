@@ -50,7 +50,7 @@ class LayBettingBacktestExcludeTop3:
     
     def analyze_race_eligibility(self, race_data):
         """Check if race meets our criteria - EXCLUDE TOP 3 STRATEGY"""
-        race_data = race_data.sort_values('FixedWinOpen_Reference')
+        race_data = race_data.sort_values('FixedWinClose_Reference')
         total_horses = len(race_data)
         
         # Check 1: Must have at least 4 horses (minimum for meaningful analysis)
@@ -61,7 +61,7 @@ class LayBettingBacktestExcludeTop3:
         top_3 = race_data.head(3)
         
         # Check 3: Calculate odds variance in top 3 only
-        top_3_odds = top_3['FixedWinOpen_Reference'].values
+        top_3_odds = top_3['FixedWinClose_Reference'].values
         odds_std = np.std(top_3_odds)
         
         # If standard deviation is less than threshold, odds are too similar
@@ -72,7 +72,7 @@ class LayBettingBacktestExcludeTop3:
         remaining_horses = race_data.iloc[3:]  # All horses except top 3
         
         # Check 5: Filter remaining horses with odds <= max_odds
-        eligible_horses = remaining_horses[remaining_horses['FixedWinOpen_Reference'] <= self.max_odds]
+        eligible_horses = remaining_horses[remaining_horses['FixedWinClose_Reference'] <= self.max_odds]
         
         if len(eligible_horses) == 0:
             return False, f"No horses to lay (excluding top 3) with odds <= {self.max_odds}:1"
@@ -119,7 +119,7 @@ class LayBettingBacktestExcludeTop3:
                 
                 # Place lay bets on eligible horses
                 for _, horse in eligible_horses.iterrows():
-                    horse_odds = horse['FixedWinOpen_Reference']
+                    horse_odds = horse['FixedWinClose_Reference']
                     horse_name = horse['runnerName']
                     finishing_pos = horse['finishingPosition']
                     
@@ -182,7 +182,7 @@ class LayBettingBacktestExcludeTop3:
                 
                 for _, horse in result.iterrows():
                     horse_name = horse['runnerName']
-                    odds = horse['FixedWinOpen_Reference']
+                    odds = horse['FixedWinClose_Reference']
                     finishing_position = horse['finishingPosition']
                     
                     profit = self.calculate_lay_bet_profit(odds, finishing_position, stake_per_bet)

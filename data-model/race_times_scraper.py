@@ -9,6 +9,7 @@ import logging
 import re
 import sqlite3
 from typing import List, Dict
+import pytz
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -32,6 +33,74 @@ class RaceTimesScraper:
             'Connection': 'keep-alive',
             'Upgrade-Insecure-Requests': '1'
         })
+        
+        # Timezone mapping for venues
+        self.venue_timezones = {
+            # Australia
+            'Ballarat': 'Australia/Melbourne',
+            'Belmont': 'Australia/Perth', 
+            'Bowraville': 'Australia/Sydney',
+            'Canberra': 'Australia/Sydney',
+            'Caulfield': 'Australia/Melbourne',
+            'Dalby': 'Australia/Brisbane',
+            'Darwin': 'Australia/Darwin',
+            'Eagle Farm': 'Australia/Brisbane',
+            'Echuca': 'Australia/Melbourne',
+            'Ellerslie': 'Australia/Sydney',
+            'Fairview': 'Australia/Sydney',
+            'Gladstone': 'Australia/Brisbane',
+            'Gold Coast': 'Australia/Brisbane',
+            'Gympie': 'Australia/Brisbane',
+            'Morphettville Parks': 'Australia/Adelaide',
+            'Mount Magnet': 'Australia/Perth',
+            'Morven': 'Australia/Brisbane',
+            'Pooncarie': 'Australia/Sydney',
+            'Randwick': 'Australia/Sydney',
+            'Townsville': 'Australia/Brisbane',
+            'Wagga Riverside': 'Australia/Sydney',
+            'Winton': 'Australia/Brisbane',
+            
+            # UK/Ireland
+            'Ayr': 'Europe/London',
+            'Chester': 'Europe/London',
+            'Downpatrick': 'Europe/London',
+            'Gowran Park': 'Europe/Dublin',
+            'Navan': 'Europe/Dublin',
+            'Newbury': 'Europe/London',
+            'Newcastle': 'Europe/London',
+            'Newmarket': 'Europe/London',
+            'Newton Abbot': 'Europe/London',
+            'Saint-Cloud': 'Europe/Paris',
+            
+            # New Zealand
+            'Te Aroha': 'Pacific/Auckland',
+            'Trentham': 'Pacific/Auckland',
+            
+            # South Africa
+            'Turffontein': 'Africa/Johannesburg',
+            
+            # Japan
+            'Hanshin': 'Asia/Tokyo',
+            'Kanazawa': 'Asia/Tokyo',
+            'Nagoya': 'Asia/Tokyo',
+            'Nakayama': 'Asia/Tokyo',
+            'Ohi': 'Asia/Tokyo',
+            'Saga': 'Asia/Tokyo',
+            'Sonoda': 'Asia/Tokyo',
+            
+            # US
+            'Churchill Downs': 'America/New_York',
+            'Fairmount Park': 'America/Chicago',
+            'Lone Star Park': 'America/Chicago',
+            'Los Alamitos': 'America/Los_Angeles',
+            'Meadowlands': 'America/New_York',
+            'Penn National': 'America/New_York',
+            'Prairie Meadows': 'America/Chicago',
+            'Presque Isle Downs': 'America/New_York',
+            'Remington Park': 'America/Chicago',
+            'Woodbine': 'America/Toronto',
+        }
+        
         self._create_race_times_table()
     
     def _create_race_times_table(self):
@@ -45,7 +114,9 @@ class RaceTimesScraper:
                 venue TEXT NOT NULL,
                 race_number INTEGER NOT NULL,
                 race_time TEXT NOT NULL,
+                race_time_utc TEXT NOT NULL,
                 race_date TEXT NOT NULL,
+                timezone TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(venue, race_number, race_date)
@@ -55,6 +126,27 @@ class RaceTimesScraper:
         conn.commit()
         conn.close()
         logger.info("Race times table created/verified")
+    
+    def convert_to_utc(self, venue: str, race_date: str, race_time: str) -> tuple:
+        """
+        Handle date assignment based on race time and venue
+        
+        Returns:
+            tuple: (time_str, date_str, timezone_str)
+        """
+        from datetime import timedelta
+        original_date = datetime.strptime(race_date, '%Y-%m-%d')
+        
+        # For US races, use the previous day (they run on the previous day in AEST)
+        if any(us_venue in venue for us_venue in ['Charles Town', 'Fairmount Park', 'Lone Star Park', 'Los Alamitos', 'Meadowlands', 'Prairie Meadows', 'Presque Isle Downs', 'Remington Park', 'Woodbine']):
+            previous_date = original_date - timedelta(days=1)
+            return race_time, previous_date.strftime('%Y-%m-%d'), 'Australia/Sydney'
+        # If race time starts with 00, 01, 02, or 03, it's tomorrow's race in AEST
+        elif race_time.startswith(('00:', '01:', '02:', '03:')):
+            next_date = original_date + timedelta(days=1)
+            return race_time, next_date.strftime('%Y-%m-%d'), 'Australia/Sydney'
+        else:
+            return race_time, race_date, 'Australia/Sydney'
     
     def save_race_times_to_db(self, races: List[Dict], date_str: str):
         """Save race times directly to database"""
@@ -68,11 +160,25 @@ class RaceTimesScraper:
         saved_count = 0
         for race in races:
             try:
+                # Convert to UTC
+                utc_time, utc_date, timezone = self.convert_to_utc(
+                    race['venue'], 
+                    date_str, 
+                    race['race_time_24h']
+                )
+                
                 cursor.execute("""
                     INSERT OR REPLACE INTO race_times 
-                    (venue, race_number, race_time, race_date, updated_at)
-                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-                """, (race['venue'], race['race_number'], race['race_time_24h'], date_str))
+                    (venue, race_number, race_time, race_time_utc, race_date, timezone, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, (
+                    race['venue'], 
+                    race['race_number'], 
+                    race['race_time_24h'],  # Original local time
+                    utc_time,  # UTC time
+                    utc_date,  # UTC date (may be different if crossing midnight)
+                    timezone
+                ))
                 saved_count += 1
             except Exception as e:
                 logger.error(f"Error saving race {race['venue']} R{race['race_number']}: {e}")
@@ -137,10 +243,12 @@ class RaceTimesScraper:
                         parts = analytics.split(' : ')
                         if len(parts) >= 3:
                             venue_race = parts[2].strip()
-                            # Split venue and race number
+                            # Split venue and race number - handle venues with "Racecourse" and "Riverside"
                             if ' R' in venue_race:
-                                venue_name = venue_race.split(' R')[0].strip()
-                                race_number = venue_race.split(' R')[1].strip()
+                                # Find the last occurrence of ' R' to handle venues like "Los Alamitos Racecourse R1"
+                                last_r_index = venue_race.rfind(' R')
+                                venue_name = venue_race[:last_r_index].strip()
+                                race_number = venue_race[last_r_index + 2:].strip()
                     
                             # Find race time within the link
                             time_element = link.find('abbr', class_='relative-time__inner')
@@ -165,34 +273,42 @@ class RaceTimesScraper:
                     logger.warning(f"Error processing race link: {e}")
                     continue
             
-            if not races:
-                # Fallback: look for any time patterns and try to extract context
-                logger.info("No structured race data found, trying fallback method")
-                
-                # Split page into lines and look for race-like patterns
-                lines = page_text.split('\n')
-                for i, line in enumerate(lines):
-                    line = line.strip()
-                    if 'R' in line and any(char.isdigit() for char in line) and ':' in line:
-                        time_match = race_time_pattern.search(line)
-                        race_num_match = race_number_pattern.search(line)
-                        
-                        # Try different venue patterns
-                        venue_name = 'Unknown'
-                        for pattern in venue_patterns:
-                            venue_match = pattern.search(line)
-                            if venue_match:
-                                venue_name = venue_match.group(1).strip()
-                                break
-                        
-                        if time_match:
-                            race_data = {
-                                'venue': venue_name,
-                                'race_number': race_num_match.group(1) if race_num_match else 'Unknown',
-                                'race_time': time_match.group(1),
-                                'raw_text': line[:150]
-                            }
-                            races.append(race_data)
+            # Always run fallback parsing to catch any races missed by structured parsing
+            logger.info("Running fallback parsing to catch any missed races")
+            
+            # Define patterns for fallback parsing
+            race_time_pattern = re.compile(r'(\d{1,2}:\d{2})')
+            race_number_pattern = re.compile(r'R(\d+)')
+            venue_patterns = [
+                re.compile(r'(\w+(?:\s+\w+)*)\s+R\d+', re.IGNORECASE),  # "Wagga Riverside R1"
+                re.compile(r'(\w+)\s+R\d+', re.IGNORECASE),  # "Belmont R1"
+            ]
+            
+            # Split page into lines and look for race-like patterns
+            page_text = soup.get_text()
+            lines = page_text.split('\n')
+            for i, line in enumerate(lines):
+                line = line.strip()
+                if 'R' in line and any(char.isdigit() for char in line) and ':' in line:
+                    time_match = race_time_pattern.search(line)
+                    race_num_match = race_number_pattern.search(line)
+                    
+                    # Try different venue patterns
+                    venue_name = 'Unknown'
+                    for pattern in venue_patterns:
+                        venue_match = pattern.search(line)
+                        if venue_match:
+                            venue_name = venue_match.group(1).strip()
+                            break
+                    
+                    if time_match and venue_name != 'Unknown':
+                        race_data = {
+                            'venue': venue_name,
+                            'race_number': race_num_match.group(1) if race_num_match else 'Unknown',
+                            'race_time': time_match.group(1),
+                            'raw_text': line[:150]
+                        }
+                        races.append(race_data)
             
             # Remove duplicates
             unique_races = []
@@ -272,40 +388,8 @@ def scrape_and_save_race_times(date_str: str = None, save_to_csv: bool = False):
         df = df[df['venue'] != 'Unknown']  # Remove races with unknown venues
         df = df[df['race_number'] != 'Unknown']  # Remove races with unknown numbers
         
-        # Filter for Australian and New Zealand venues
-        australian_nz_venues = [
-            # Australian venues
-            'Belmont', 'Canterbury', 'Doomben', 'Murray Bridge', 'Murray Bdge', 'Bendigo', 
-            'Flemington', 'Caulfield', 'Moonee Valley', 'Randwick', 'Rosehill',
-            'Warwick Farm', 'Kembla Grange', 'Newcastle', 'Gosford', 'Wyong', 'Hawkesbury',
-            'Kembla', 'Grafton', 'Lismore', 'Ballina', 'Coffs Harbour', 'Port Macquarie',
-            'Taree', 'Muswellbrook', 'Scone', 'Tamworth', 'Gunnedah', 'Moree', 'Armidale',
-            'Inverell', 'Grafton', 'Lismore', 'Ballina', 'Coffs Harbour', 'Port Macquarie',
-            'Taree', 'Muswellbrook', 'Scone', 'Tamworth', 'Gunnedah', 'Moree', 'Armidale',
-            'Inverell', 'Eagle Farm', 'Ipswich', 'Gold Coast', 'Sunshine Coast', 'Toowoomba',
-            'Rockhampton', 'Mackay', 'Townsville', 'Cairns', 'Mount Isa', 'Longreach',
-            'Charleville', 'Roma', 'Dalby', 'Warwick', 'Stanthorpe', 'Goondiwindi',
-            'Adelaide', 'Morphettville', 'Gawler', 'Murray Bridge', 'Bordertown', 'Naracoorte',
-            'Mount Gambier', 'Penola', 'Millicent', 'Port Augusta', 'Port Pirie', 'Whyalla',
-            'Perth', 'Ascot', 'Belmont', 'Northam', 'York', 'Bunbury', 'Albany', 'Kalgoorlie',
-            'Geraldton', 'Carnarvon', 'Broome', 'Kununurra', 'Hobart', 'Launceston', 'Devonport',
-            'Burnie', 'Hobart', 'Launceston', 'Devonport', 'Burnie', 'Hobart', 'Launceston',
-            # New Zealand venues
-            'Taupo', 'Auckland', 'Ellerslie', 'Te Rapa', 'Trentham', 'Riccarton', 'Ashburton',
-            'Timaru', 'Oamaru', 'Wingatui', 'Gore', 'Invercargill', 'Awapuni', 'Wanganui',
-            'Hawera', 'New Plymouth', 'Taranaki', 'Palmerston North', 'Manawatu', 'Otaki',
-            'Levin', 'Feilding', 'Marton', 'Waverley', 'Stratford', 'Pukekohe', 'Cambridge',
-            'Te Awamutu', 'Matamata', 'Tauranga', 'Rotorua', 'Gisborne', 'Hastings', 'Napier',
-            'Waipukurau', 'Dannevirke', 'Woodville', 'Masterton', 'Featherston', 'Greytown',
-            'Carterton', 'Eketahuna', 'Pahiatua', 'Pongaroa', 'Kumeroa', 'Mangatainoka',
-            'Blenheim', 'Nelson', 'Motueka', 'Takaka', 'Westport', 'Reefton', 'Greymouth',
-            'Hokitika', 'Kumara', 'Rangiora', 'Kaikoura', 'Cheviot', 'Amberley', 'Culverden',
-            'Waiau', 'Hanmer Springs', 'Kaikoura', 'Picton', 'Seddon', 'Ward', 'Spring Creek'
-        ]
-        
-        # Filter for Australian and New Zealand venues
-        df = df[df['venue'].isin(australian_nz_venues)]
-        logger.info(f"Filtered to {len(df)} Australian and New Zealand races")
+        # Include all races regardless of country
+        logger.info(f"Found {len(df)} races from all countries")
         
         # Convert times - handle both absolute and relative time formats
         # Capture the exact time when we start processing to use as reference
