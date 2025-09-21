@@ -73,7 +73,7 @@ public class GreyhoundBackgroundWorker : BackgroundService
             var accountFundsJson = await _accountService.GetAccountFundsAsync();
             DisplayHandler.DisplayAccountData(accountFundsJson);
 
-            await Task.Delay(TimeSpan.FromSeconds(120), stoppingToken);
+            await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
         }
     }
 

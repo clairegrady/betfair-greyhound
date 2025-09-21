@@ -25,4 +25,7 @@ public class ApiRunner
 
     [JsonPropertyName("description")]
     public RunnerDescription Description { get; set; } // ← Includes metadata
+
+    [JsonPropertyName("sp")]
+    public StartingPrice Sp { get; set; }
 }

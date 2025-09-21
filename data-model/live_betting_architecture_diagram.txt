@@ -1,0 +1,127 @@
+LIVE BETTING AUTOMATION SYSTEM ARCHITECTURE
+==========================================
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           PYTHON AUTOMATION LAYER                               │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                 │
+│  ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐ │
+│  │ automated_lay_      │    │ lay_betting_        │    │ race_times_         │ │
+│  │ betting.py          │    │ automation.py       │    │ scraper.py          │ │
+│  │                     │    │                     │    │                     │ │
+│  │ • Main automation   │    │ • Core betting      │    │ • Scrapes race       │ │
+│  │   loop (2min cycle) │    │   strategy logic    │    │   times from web     │ │
+│  │ • Monitors races    │    │ • Database queries  │    │ • Updates race_times │ │
+│  │ • Calls automation  │    │ • API calls to C#   │    │   table              │ │
+│  │ • Dry run / Live    │    │ • Duplicate bet     │    │ • Australian/NZ      │ │
+│  │   mode control      │    │   prevention        │    │   venues only        │ │
+│  └─────────────────────┘    └─────────────────────┘    └─────────────────────┘ │
+│           │                           │                           │             │
+│           └───────────────────────────┼───────────────────────────┘             │
+│                                       │                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐ │
+│  │                        SHARED LAY BETTING STRATEGY                          │ │
+│  │                                                                             │ │
+│  │  shared_lay_betting.py                                                     │ │
+│  │  • LayBettingStrategy class                                                │ │
+│  │  • LayBettingResults class                                                 │ │
+│  │  • Standard deviation analysis                                             │ │
+│  │  • Max odds filtering                                                      │ │
+│  │  • Profit/loss calculations                                               │ │
+│  └─────────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                              DATABASE LAYER                                    │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                 │
+│  ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐ │
+│  │ betfairmarket.sqlite│    │ race_times table    │    │ betting_history      │ │
+│  │                     │    │                     │    │ table               │ │
+│  │ • HorseMarketBook   │    │ • venue             │    │ • market_id         │ │
+│  │ • MarketBookLayPrices│   │ • race_number       │    │ • selection_id      │ │
+│  │ • MarketBookBackPrices│  │ • race_time         │    │ • horse_name        │ │
+│  │ • Real-time odds    │    │ • race_date         │    │ • lay_price         │ │
+│  │ • Market data        │    │ • Scraped from web  │    │ • stake             │ │
+│  └─────────────────────┘    └─────────────────────┘    └─────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                            C# BACKEND API LAYER                                │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                 │
+│  ┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐ │
+│  │ PlaceOrderController│    │ HorseMarketBook     │    │ MarketController    │ │
+│  │                     │    │ Controller          │    │                     │ │
+│  │ • /api/PlaceOrder   │    │ • /api/HorseMarket  │    │ • /api/Market/      │ │
+│  │ • Places actual     │    │   Book/details      │    │   profit-and-loss   │ │
+│  │   bets on Betfair   │    │ • /api/HorseMarket  │    │ • Market P&L data   │ │
+│  │ • Validates bet     │    │   Book/odds/{id}    │    │ • Betting results   │ │
+│  │   requests          │    │ • Horse odds data   │    │   tracking          │ │
+│  └─────────────────────┘    └─────────────────────┘    └─────────────────────┘ │
+│           │                           │                           │             │
+│           └───────────────────────────┼───────────────────────────┘             │
+│                                       │                                         │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐ │
+│  │                          C# SERVICES LAYER                                 │ │
+│  │                                                                             │ │
+│  │  • PlaceOrderService     • MarketBookDb        • MarketApiService          │ │
+│  │  • BettingSimulationService • HorseRacingAutomationService                │ │
+│  │  • MLPredictionService   • MarketService                                   │ │
+│  └─────────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────┘
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                            BETFAIR EXCHANGE API                               │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                 │
+│  • Betfair Sports API (REST)                                                   │
+│  • Authentication & Session Management                                          │
+│  • Market Catalogue & Market Book Data                                         │
+│  • Place Order & Bet Management                                                │
+│  • Real-time Odds & Market Updates                                             │
+│  • Profit & Loss Tracking                                                      │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+DATA FLOW SUMMARY:
+==================
+
+1. RACE DATA COLLECTION:
+   race_times_scraper.py → race_times table → Database
+
+2. MARKET DATA COLLECTION:
+   C# Backend → Betfair API → HorseMarketBook table → Database
+
+3. AUTOMATION LOOP:
+   automated_lay_betting.py → lay_betting_automation.py → Database queries
+
+4. BETTING DECISION:
+   Strategy analysis → Eligible horses → API call to C# backend
+
+5. BET PLACEMENT:
+   Python automation → C# PlaceOrder API → Betfair Exchange
+
+6. RESULT TRACKING:
+   Betting history → Database → Performance analysis
+
+KEY CONNECTIONS:
+================
+
+Python → C# Backend:
+• HTTP POST to http://localhost:5173/api/PlaceOrder
+• JSON payload with bet instructions
+• Response with bet confirmation
+
+C# Backend → Betfair:
+• REST API calls to Betfair Exchange
+• Authentication via session tokens
+• Real-time market data and bet placement
+
+Database Integration:
+• SQLite database shared between Python and C#
+• Real-time odds from C# backend
+• Race times from Python scraper
+• Betting history for duplicate prevention

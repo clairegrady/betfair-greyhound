@@ -20,9 +20,11 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultDb");
 
 builder.Services.Configure<EndpointSettings>(builder.Configuration.GetSection("EndpointUrls"));
 builder.Services.Configure<AuthSettings>(builder.Configuration.GetSection("Auth"));
+builder.Services.Configure<StreamApiSettings>(builder.Configuration.GetSection("StreamApi"));
 
-// Register the auth service
+// Register the auth services
 builder.Services.AddSingleton<BetfairAuthService>();
+builder.Services.AddSingleton<StreamApiAuthService>();
 
 // Register http client services
 builder.Services.AddHttpClient<ICompetitionService, CompetitionService>((sp, client) =>
@@ -82,11 +84,6 @@ builder.Services.AddSingleton(new EventDb2(connectionString));
 builder.Services.AddSingleton(new MarketProfitAndLossDb(connectionString));
 builder.Services.AddSingleton(new HistoricalDataDb(connectionString));
 
-// Add simulation database
-var simulationConnectionString = builder.Configuration.GetConnectionString("SimulationDatabase") ?? "Data Source=simulation.db";
-builder.Services.AddDbContext<SimulationDbContext>(options =>
-    options.UseSqlite(simulationConnectionString));
-
 // Register scoped services
 builder.Services.AddScoped<CompetitionAutomationService>();
 builder.Services.AddScoped<MarketAutomationService>();
@@ -95,10 +92,14 @@ builder.Services.AddScoped<GreyhoundAutomationService>();
 builder.Services.AddSingleton<HorseRacingAutomationService>();
 //builder.Services.AddScoped<MarketBackgroundWorker>();
 
+// Register Stream API services
+//builder.Services.AddSingleton<IStreamApiService, StreamApiService>();
+
 // Register hosted services
 //builder.Services.AddHostedService<BetfairAutomationService>();
-builder.Services.AddHostedService<MarketBackgroundWorker>();
+//builder.Services.AddHostedService<MarketBackgroundWorker>();
 builder.Services.AddHostedService<HorseRacingStartupService>();
+//builder.Services.AddHostedService<StreamApiBackgroundWorker>();
 
 builder.Services.AddScoped<DatabaseService>(provider => new DatabaseService(connectionString));
 

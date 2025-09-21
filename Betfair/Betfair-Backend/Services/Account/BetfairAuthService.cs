@@ -22,6 +22,7 @@ public class BetfairAuthService
     private readonly string _username;
     private readonly string _password;
     private string _sessionToken; 
+    private DateTime _sessionTokenExpiry = DateTime.MinValue;
     private readonly EndpointSettings _settings;
     
 
@@ -41,14 +42,25 @@ public class BetfairAuthService
 
     public async Task<string> GetSessionTokenAsync()
     {
-        if (string.IsNullOrEmpty(_sessionToken))
+        // Always get fresh token if expired or within 5 minutes of expiry
+        if (string.IsNullOrEmpty(_sessionToken) || DateTime.UtcNow >= _sessionTokenExpiry.AddMinutes(-5))
         {
             _sessionToken = await AuthenticateAsync();
+            // Betfair session tokens typically last 8 hours
+            _sessionTokenExpiry = DateTime.UtcNow.AddHours(8);
         }
         return _sessionToken;
     }
     
-    private async Task<string> AuthenticateAsync()
+    public async Task<string> GetFreshSessionTokenAsync()
+    {
+        // Force a new authentication for Stream API
+        _sessionToken = await AuthenticateAsync();
+        _sessionTokenExpiry = DateTime.UtcNow.AddHours(8);
+        return _sessionToken;
+    }
+
+    public async Task<string> AuthenticateAsync()
     {
         var requestUri = _settings.CertLoginEndpoint;
         var requestMessage = new HttpRequestMessage(HttpMethod.Post, requestUri);

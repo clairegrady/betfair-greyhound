@@ -11,7 +11,7 @@ class LayBettingStrategy:
     Shared lay betting strategy logic used by both backtest and live scripts
     """
     
-    def __init__(self, std_threshold: float = 1.5, max_odds: float = 25.0):
+    def __init__(self, std_threshold: float = 1.5, max_odds: float = 30.0):
         self.std_threshold = std_threshold
         self.max_odds = max_odds
     
@@ -62,6 +62,44 @@ class LayBettingStrategy:
             return False, f"No horses in bottom half with odds <= {self.max_odds}:1", None
         
         return True, f"Eligible - {len(eligible_horses)} horses to lay", eligible_horses
+    
+    def analyze_race_eligibility_with_gap(self, race_data: pd.DataFrame, odds_column: str = 'FixedWinOpen_Reference') -> Tuple[bool, str, Optional[pd.DataFrame]]:
+        """
+        Check race eligibility with gap strategy fallback
+        
+        First checks if top half std dev is below threshold, then uses gap strategy
+        """
+        horses_with_odds = race_data.dropna(subset=[odds_column]).sort_values(odds_column)
+        
+        # Need at least 6 horses for gap strategy
+        if len(horses_with_odds) < 6:
+            return False, f"Gap strategy needs at least 6 horses (found {len(horses_with_odds)})", None
+        
+        top_half_count = len(horses_with_odds) // 2
+        top_half_odds = horses_with_odds.iloc[:top_half_count][odds_column]
+        
+        # Calculate std dev of top half
+        top_half_std = top_half_odds.std()
+        
+        # Only use gap strategy if top half std dev is below threshold
+        if top_half_std >= self.std_threshold:
+            # Use normal strategy - top half has sufficient variance
+            return self.analyze_race_eligibility(race_data, odds_column)
+        
+        # Top half std dev is too low - check for odds gap
+        last_top_half_odds = horses_with_odds.iloc[top_half_count - 1][odds_column]
+        first_bottom_half_odds = horses_with_odds.iloc[top_half_count][odds_column]
+        
+        # Check if bottom half starts at least double the top half
+        if first_bottom_half_odds >= (last_top_half_odds * 2):
+            # Get bottom half horses with odds <= max_odds
+            bottom_half = horses_with_odds.iloc[top_half_count:]
+            eligible_horses = bottom_half[bottom_half[odds_column] <= self.max_odds]
+            
+            if len(eligible_horses) > 0:
+                return True, f"Gap strategy - {len(eligible_horses)} horses (top half std: {top_half_std:.2f}, gap: {last_top_half_odds:.1f} to {first_bottom_half_odds:.1f})", eligible_horses
+        
+        return False, f"No gap found (top half std: {top_half_std:.2f}, last top: {last_top_half_odds:.1f}, first bottom: {first_bottom_half_odds:.1f})", None
     
     def calculate_lay_bet_profit(self, horse_odds: float, horse_finished_position: float, stake: float = 1) -> float:
         """
