@@ -23,7 +23,7 @@ class RaceTimesScraper:
     
     def __init__(self, db_path: str = None):
         self.base_url = "https://www.racenet.com.au"
-        self.db_path = db_path or "/Users/clairegrady/RiderProjects/betfair/Betfair/Betfair-Backend/betfairmarket.sqlite"
+        self.db_path = db_path or "/Users/clairegrady/RiderProjects/betfair/data-model/live_betting.sqlite"
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
@@ -39,23 +39,29 @@ class RaceTimesScraper:
             # Australia
             'Ballarat': 'Australia/Melbourne',
             'Belmont': 'Australia/Perth', 
+            'Benalla': 'Australia/Melbourne',
             'Bowraville': 'Australia/Sydney',
             'Canberra': 'Australia/Sydney',
             'Caulfield': 'Australia/Melbourne',
+            'Coleraine': 'Australia/Melbourne',
             'Dalby': 'Australia/Brisbane',
             'Darwin': 'Australia/Darwin',
             'Eagle Farm': 'Australia/Brisbane',
             'Echuca': 'Australia/Melbourne',
             'Ellerslie': 'Australia/Sydney',
-            'Fairview': 'Australia/Sydney',
+            'Ewan': 'Australia/Brisbane',
             'Gladstone': 'Australia/Brisbane',
             'Gold Coast': 'Australia/Brisbane',
             'Gympie': 'Australia/Brisbane',
+            'Lismore': 'Australia/Sydney',
+            'Moonee Valley': 'Australia/Melbourne',
             'Morphettville Parks': 'Australia/Adelaide',
             'Mount Magnet': 'Australia/Perth',
             'Morven': 'Australia/Brisbane',
             'Pooncarie': 'Australia/Sydney',
             'Randwick': 'Australia/Sydney',
+            'Scone': 'Australia/Sydney',
+            'Sunshine Coast': 'Australia/Brisbane',
             'Townsville': 'Australia/Brisbane',
             'Wagga Riverside': 'Australia/Sydney',
             'Winton': 'Australia/Brisbane',
@@ -78,6 +84,7 @@ class RaceTimesScraper:
             
             # South Africa
             'Turffontein': 'Africa/Johannesburg',
+            'Fairview': 'Africa/Johannesburg',
             
             # Japan
             'Hanshin': 'Asia/Tokyo',
@@ -103,6 +110,25 @@ class RaceTimesScraper:
         
         self._create_race_times_table()
     
+    def _get_country_from_venue(self, venue):
+        """Determine country from venue name based on timezone"""
+        timezone = self.venue_timezones.get(venue, 'UTC')
+        
+        if 'Australia' in timezone:
+            return 'AUS'
+        elif 'Europe/London' in timezone or 'Europe/Dublin' in timezone:
+            return 'UK/IRE'
+        elif 'Pacific/Auckland' in timezone:
+            return 'NZ'
+        elif 'Africa/Johannesburg' in timezone:
+            return 'SA'
+        elif 'Asia/Tokyo' in timezone:
+            return 'JPN'
+        elif 'America' in timezone:
+            return 'US/CAN'
+        else:
+            return 'UNKNOWN'
+    
     def _create_race_times_table(self):
         """Create race_times table if it doesn't exist"""
         conn = sqlite3.connect(self.db_path)
@@ -117,6 +143,7 @@ class RaceTimesScraper:
                 race_time_utc TEXT NOT NULL,
                 race_date TEXT NOT NULL,
                 timezone TEXT NOT NULL,
+                country TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(venue, race_number, race_date)
@@ -156,7 +183,7 @@ class RaceTimesScraper:
         
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
+        cursor.execute("DELETE FROM race_times");   
         saved_count = 0
         for race in races:
             try:
@@ -167,17 +194,21 @@ class RaceTimesScraper:
                     race['race_time_24h']
                 )
                 
+                # Get country for this venue
+                country = self._get_country_from_venue(race['venue'])
+                
                 cursor.execute("""
                     INSERT OR REPLACE INTO race_times 
-                    (venue, race_number, race_time, race_time_utc, race_date, timezone, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    (venue, race_number, race_time, race_time_utc, race_date, timezone, country, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 """, (
                     race['venue'], 
                     race['race_number'], 
                     race['race_time_24h'],  # Original local time
                     utc_time,  # UTC time
                     utc_date,  # UTC date (may be different if crossing midnight)
-                    timezone
+                    timezone,
+                    country
                 ))
                 saved_count += 1
             except Exception as e:

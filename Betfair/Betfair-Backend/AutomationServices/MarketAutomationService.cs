@@ -40,97 +40,126 @@ public class MarketAutomationService
             return;
         }
 
-        //Console.WriteLine($"🔍 Market IDs to process: [{string.Join(", ", marketIds)}]");
+        // Implement batch processing to avoid TOO_MUCH_DATA error
+        const int batchSize = 10; // Start with 10 markets per batch to avoid Betfair limits
+        var batches = marketIds
+            .Select((marketId, index) => new { marketId, index })
+            .GroupBy(x => x.index / batchSize)
+            .Select(g => g.Select(x => x.marketId).ToList())
+            .ToList();
 
-        var marketBookJson = await _marketApiService.ListMarketBookAsync(marketIds);
-       // Console.WriteLine($"📦 Received market book JSON: {(!string.IsNullOrEmpty(marketBookJson) ? "Data received" : "No data")}");
+        Console.WriteLine($"📦 Processing {marketIds.Count} markets in {batches.Count} batches of {batchSize}");
 
-        var marketBookApiResponse = JsonSerializer.Deserialize<ApiResponse<MarketBook<ApiRunner>>>(marketBookJson);
-        //Console.WriteLine($"🔄 Deserialization result: {marketBookApiResponse?.Result?.Count() ?? 0} market books");
+        var allMarketBooks = new List<MarketBook<ApiRunner>>();
 
-        if (marketBookApiResponse?.Result?.Any() == true)
+        for (int i = 0; i < batches.Count; i++)
         {
-            var marketBooks = marketBookApiResponse.Result
-                .Where(book => book.MarketId != null)
-                .Select(book => new MarketBook<ApiRunner>
+            var batch = batches[i];
+            //Console.WriteLine($"🔄 Processing batch {i + 1}/{batches.Count} with {batch.Count} markets");
+
+            try
+            {
+                var marketBookJson = await _marketApiService.ListMarketBookAsync(batch);
+                //Console.WriteLine($"📦 Batch {i + 1} - Received JSON: {(!string.IsNullOrEmpty(marketBookJson) ? $"Data received ({marketBookJson.Length} chars)" : "No data")}");
+
+                // Check for error responses
+                if (!string.IsNullOrEmpty(marketBookJson) && marketBookJson.Contains("\"error\""))
                 {
-                    MarketId = book.MarketId,
-                    IsMarketDataDelayed = book.IsMarketDataDelayed,
-                    Status = book.Status,
-                    BetDelay = book.BetDelay,
-                    BspReconciled = book.BspReconciled,
-                    Complete = book.Complete,
-                    Inplay = book.Inplay,
-                    NumberOfWinners = book.NumberOfWinners,
-                    NumberOfRunners = book.NumberOfRunners,
-                    NumberOfActiveRunners = book.NumberOfActiveRunners,
-                    LastMatchTime = book.LastMatchTime,
-                    TotalMatched = book.TotalMatched,
-                    TotalAvailable = book.TotalAvailable,
-                    CrossMatching = book.CrossMatching,
-                    RunnersVoidable = book.RunnersVoidable,
-                    Version = book.Version,
-                    Runners = book.Runners?.Select(runner => new ApiRunner
-                    {
-                        SelectionId = runner.SelectionId,
-                        Handicap = runner.Handicap,
-                        Status = runner.Status,
-                        LastPriceTraded = runner.LastPriceTraded,
-                        TotalMatched = runner.TotalMatched,
+                    Console.WriteLine($"⚠️ Batch {i + 1} - Error response detected: {marketBookJson}");
+                    continue; // Skip this batch and continue with the next
+                }
 
-                        Exchange = runner.Exchange != null
-                            ? new Exchange
+                var marketBookApiResponse = JsonSerializer.Deserialize<ApiResponse<MarketBook<ApiRunner>>>(marketBookJson);
+                Console.WriteLine($"🔄 Batch {i + 1} - Deserialization result: {marketBookApiResponse?.Result?.Count() ?? 0} market books");
+
+                if (marketBookApiResponse?.Result?.Any() == true)
+                {
+                    var batchMarketBooks = marketBookApiResponse.Result
+                        .Where(book => book.MarketId != null)
+                        .Select(book => new MarketBook<ApiRunner>
+                        {
+                            MarketId = book.MarketId,
+                            IsMarketDataDelayed = book.IsMarketDataDelayed,
+                            Status = book.Status,
+                            BetDelay = book.BetDelay,
+                            BspReconciled = book.BspReconciled,
+                            Complete = book.Complete,
+                            Inplay = book.Inplay,
+                            NumberOfWinners = book.NumberOfWinners,
+                            NumberOfRunners = book.NumberOfRunners,
+                            NumberOfActiveRunners = book.NumberOfActiveRunners,
+                            LastMatchTime = book.LastMatchTime,
+                            TotalMatched = book.TotalMatched,
+                            TotalAvailable = book.TotalAvailable,
+                            CrossMatching = book.CrossMatching,
+                            RunnersVoidable = book.RunnersVoidable,
+                            Version = book.Version,
+                            Runners = book.Runners?.Select(runner => new ApiRunner
                             {
-                                AvailableToBack = runner.Exchange.AvailableToBack?.Select(p => new PriceSize
-                                {
-                                    Price = p.Price,
-                                    Size = p.Size
-                                }).ToList() ?? new List<PriceSize>(),
+                                SelectionId = runner.SelectionId,
+                                Handicap = runner.Handicap,
+                                Status = runner.Status,
+                                LastPriceTraded = runner.LastPriceTraded,
+                                TotalMatched = runner.TotalMatched,
 
-                                AvailableToLay = runner.Exchange.AvailableToLay?.Select(p => new PriceSize
-                                {
-                                    Price = p.Price,
-                                    Size = p.Size
-                                }).ToList() ?? new List<PriceSize>(),
+                                Exchange = runner.Exchange != null
+                                    ? new Exchange
+                                    {
+                                        AvailableToBack = runner.Exchange.AvailableToBack?.Select(p => new PriceSize
+                                        {
+                                            Price = p.Price,
+                                            Size = p.Size
+                                        }).ToList() ?? new List<PriceSize>(),
 
-                                TradedVolume = runner.Exchange.TradedVolume?.Select(p => new PriceSize
-                                {
-                                    Price = p.Price,
-                                    Size = p.Size
-                                }).ToList() ?? new List<PriceSize>()
-                            }
-                            : null,
-                        Description = runner.Description
-                    }).ToList() ?? new List<ApiRunner>()
-                })
-                .ToList();
+                                        AvailableToLay = runner.Exchange.AvailableToLay?.Select(p => new PriceSize
+                                        {
+                                            Price = p.Price,
+                                            Size = p.Size
+                                        }).ToList() ?? new List<PriceSize>(),
 
-            //Console.WriteLine($"🏆 Processed {marketBooks.Count} market books with exchange data");
+                                        TradedVolume = runner.Exchange.TradedVolume?.Select(p => new PriceSize
+                                        {
+                                            Price = p.Price,
+                                            Size = p.Size
+                                        }).ToList() ?? new List<PriceSize>()
+                                    }
+                                    : null,
+                                Description = runner.Description
+                            }).ToList() ?? new List<ApiRunner>()
+                        })
+                        .ToList();
 
-            // Log details about exchange data
-            foreach (var book in marketBooks)
-            {
-                var runnersWithExchange = book.Runners?.Count(r => r.Exchange != null) ?? 0;
-                var totalBackPrices = book.Runners?.Sum(r => r.Exchange?.AvailableToBack?.Count ?? 0) ?? 0;
-                var totalLayPrices = book.Runners?.Sum(r => r.Exchange?.AvailableToLay?.Count ?? 0) ?? 0;
+                    allMarketBooks.AddRange(batchMarketBooks);
+                    Console.WriteLine($"✅ Batch {i + 1} - Added {batchMarketBooks.Count} market books (Total: {allMarketBooks.Count})");
+                }
+                else
+                {
+                    Console.WriteLine($"❌ Batch {i + 1} - No market books found in response");
+                }
 
-                //Console.WriteLine($"📈 Market {book.MarketId}: {runnersWithExchange} runners with exchange data, {totalBackPrices} back prices, {totalLayPrices} lay prices");
+                // Add a small delay between batches to avoid rate limiting
+                if (i < batches.Count - 1)
+                {
+                    await Task.Delay(100); // 100ms delay between batches
+                }
             }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ Batch {i + 1} - Exception: {ex.Message}");
+                // Continue with next batch instead of failing completely
+            }
+        }
 
-            if (marketBooks.Any())
-            {
-                //Console.WriteLine($"💾 Calling InsertMarketBooksIntoDatabase with {marketBooks.Count} market books");
-                await _marketBookDb.InsertMarketBooksIntoDatabase(marketBooks);
-                //Console.WriteLine($"✅ InsertMarketBooksIntoDatabase completed");
-            }
-            else
-            {
-                //Console.WriteLine("❌ No market books to insert after processing");
-            }
+        // Insert all collected market books into database
+        if (allMarketBooks.Any())
+        {
+            Console.WriteLine($"📊 InsertMarketBooksIntoDatabase called with {allMarketBooks.Count} market books");
+            await _marketBookDb.InsertMarketBooksIntoDatabase(allMarketBooks);
+            Console.WriteLine($"✅ InsertMarketBooksIntoDatabase completed - {allMarketBooks.Count} market books processed");
         }
         else
         {
-            //Console.WriteLine("❌ Failed to deserialize market book or no market book data found");
+            Console.WriteLine("❌ No market books to insert after processing all batches");
         }
     }
 
@@ -210,11 +239,31 @@ public class MarketAutomationService
         // await _runnerDb.InsertRunnersAsync(allFlatRunners);
 
         var today = DateTime.Now.Date;
+        var tomorrow = today.AddDays(1);
+
+        // Check each filter condition separately
+        var eventIdMatches = marketCatalogues.Where(c => string.IsNullOrEmpty(eventId) || c.Event.Id.Equals(eventId, StringComparison.OrdinalIgnoreCase)).ToList();
+        var raceNameMatches = marketCatalogues.Where(c => Regex.IsMatch(c.MarketName, @"^R\d{1,2}")).ToList();
+        var hasOpenDate = marketCatalogues.Where(c => c.Event.OpenDate.HasValue).ToList();
+        var todayEvents = marketCatalogues.Where(c => c.Event.OpenDate.HasValue && c.Event.OpenDate.Value.ToLocalTime().Date == today).ToList();
+        var tomorrowEvents = marketCatalogues.Where(c => c.Event.OpenDate.HasValue && c.Event.OpenDate.Value.ToLocalTime().Date == tomorrow).ToList();
+        var todayAndTomorrowEvents = marketCatalogues.Where(c => c.Event.OpenDate.HasValue &&
+            (c.Event.OpenDate.Value.ToLocalTime().Date == today || c.Event.OpenDate.Value.ToLocalTime().Date == tomorrow)).ToList();
+
+        Console.WriteLine($"Markets matching eventId filter: {eventIdMatches.Count}");
+        Console.WriteLine($"Markets with race name pattern (R1, R2, etc.): {raceNameMatches.Count}");
+        Console.WriteLine($"Markets with OpenDate: {hasOpenDate.Count}");
+        Console.WriteLine($"Markets scheduled for today: {todayEvents.Count}");
+        Console.WriteLine($"Markets scheduled for tomorrow: {tomorrowEvents.Count}");
+        Console.WriteLine($"Markets scheduled for today or tomorrow: {todayAndTomorrowEvents.Count}");
+
+        // Modified filter to include both today and tomorrow
         filteredMarketDetails = marketCatalogues
-            .Where(catalogue => catalogue.Event.Id.Equals(eventId, StringComparison.OrdinalIgnoreCase)
+            .Where(catalogue => (string.IsNullOrEmpty(eventId) || catalogue.Event.Id.Equals(eventId, StringComparison.OrdinalIgnoreCase))
                                 && Regex.IsMatch(catalogue.MarketName, @"^R\d{1,2}")
                                 && catalogue.Event.OpenDate.HasValue
-                                && catalogue.Event.OpenDate.Value.ToLocalTime().Date == today)
+                                && (catalogue.Event.OpenDate.Value.ToLocalTime().Date == today
+                                    || catalogue.Event.OpenDate.Value.ToLocalTime().Date == tomorrow))
             .Select(catalogue => new MarketDetails
             {
                 MarketId = catalogue.MarketId,

@@ -100,7 +100,8 @@ public class MarketApiService : IMarketApiService
         // Increment rotation for next call
         _timeWindowRotation = (_timeWindowRotation + 1) % 4; // Rotate through 4 time windows
 
-        Console.WriteLine($"Fetched markets for time window {_timeWindowRotation}: {fromTime:yyyy-MM-dd HH:mm} to {toTime:yyyy-MM-dd HH:mm}");
+        //Console.WriteLine($"Fetched markets for time window {_timeWindowRotation}: {fromTime:yyyy-MM-dd HH:mm} to {toTime:yyyy-MM-dd HH:mm}");
+        Console.WriteLine($"Fetched markets for time window {_timeWindowRotation}: {fromTime} to {toTime}");
         Console.WriteLine($"Total unique markets tracked: {FetchedMarketIds.Count}");
 
         return jsonResponse;
@@ -120,7 +121,8 @@ public class MarketApiService : IMarketApiService
             @params = new
             {
                 marketIds = limitedMarketIds,
-                priceProjection = new { priceData = new[] { "EX_BEST_OFFERS", "EX_TRADED", "SP_AVAILABLE", "SP_TRADED" } }
+                // Simplify price projection to reduce data size
+                priceProjection = new { priceData = new[] { "EX_BEST_OFFERS" } } // Only best offers, not all traded data
             },
             id = 1
         };

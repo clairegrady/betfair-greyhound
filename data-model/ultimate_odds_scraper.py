@@ -28,7 +28,7 @@ class UltimateOddsScraper:
     def __init__(self):
         self.driver = None
         self.market_db_path = "/Users/clairegrady/RiderProjects/betfair/Betfair/Betfair-Backend/betfairmarket.sqlite"
-        self.betting_db_path = "/Users/clairegrady/RiderProjects/betfair/data-model/betting_history.sqlite"
+        self.betting_db_path = "/Users/clairegrady/RiderProjects/betfair/data-model/live_betting.sqlite"
         self.setup_driver()
         self.create_odds_table()
     
@@ -97,32 +97,50 @@ class UltimateOddsScraper:
         finally:
             conn.close()
     
+    def cleanup_yesterdays_data(self):
+        """Delete yesterday's scraped odds data to avoid clutter"""
+        conn = sqlite3.connect(self.betting_db_path)
+        cursor = conn.cursor()
+        
+        try:
+            # Get yesterday's date
+            from datetime import datetime, timedelta
+            yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+            
+            # Delete yesterday's data
+            cursor.execute("DELETE FROM scraped_odds WHERE race_date = ?", (yesterday,))
+            deleted_count = cursor.rowcount
+            conn.commit()
+            
+            if deleted_count > 0:
+                logger.info(f"🧹 Cleaned up {deleted_count} records from yesterday ({yesterday})")
+            else:
+                logger.info(f"No data found for yesterday ({yesterday}) to clean up")
+                
+        except Exception as e:
+            logger.error(f"Error cleaning up yesterday's data: {str(e)}")
+        finally:
+            conn.close()
+    
     def get_todays_races(self) -> List[Dict]:
         """Get today's races from race_times database for AU/NZ venues"""
-        conn = sqlite3.connect(self.market_db_path)
+        conn = sqlite3.connect(self.betting_db_path)
         cursor = conn.cursor()
         
         try:
             # Get today's date
             today = datetime.now().strftime('%Y-%m-%d')
             
-            # AU/NZ venues
-            au_nz_venues = [
-                'Flemington', 'Devonport Synthetic', 'Sunshine Coast', 'Kalgoorlie', 
-                'Nowra', 'Mount Gambier', 'Gore', 'Te Aroha', 'Hamilton'
-            ]
-            
-            # Query for today's races
-            placeholders = ','.join(['?' for _ in au_nz_venues])
-            query = f"""
+            # Query for today's races using country column
+            query = """
                 SELECT DISTINCT venue, race_number, race_time, race_date
                 FROM race_times 
                 WHERE race_date = ? 
-                AND venue IN ({placeholders})
+                AND country IN ('AUS', 'NZ')
                 ORDER BY venue, race_number
             """
             
-            cursor.execute(query, [today] + au_nz_venues)
+            cursor.execute(query, [today])
             races = cursor.fetchall()
             
             race_list = []
@@ -300,9 +318,35 @@ class UltimateOddsScraper:
             logger.error(f"Error scraping {venue}: {str(e)}")
             return []
     
+    def get_race_time(self, venue: str, race_num: str, date: str) -> str:
+        """Get the actual race time from race_times table"""
+        try:
+            conn = sqlite3.connect(self.betting_db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT race_time FROM race_times 
+                WHERE venue = ? AND race_number = ? AND race_date = ?
+            """, (venue, race_num, date))
+            
+            result = cursor.fetchone()
+            if result:
+                return result[0]
+            else:
+                return 'Unknown'
+        except Exception as e:
+            logger.error(f"Error getting race time: {str(e)}")
+            return 'Unknown'
+        finally:
+            if 'conn' in locals():
+                conn.close()
+    
     def scrape_single_race(self, race_num: str, venue: str, date: str) -> Optional[Dict]:
         """Scrape a single race by clicking on the race tab"""
         try:
+            # Get the actual race time from race_times table
+            race_time = self.get_race_time(venue, race_num, date)
+            
             # Find the race tab
             race_tab = self.driver.find_element(By.XPATH, f"//a[contains(text(), 'R{race_num}')]")
             
@@ -325,7 +369,7 @@ class UltimateOddsScraper:
             soup = BeautifulSoup(self.driver.page_source, 'html.parser')
             
             # Extract race data
-            race_data = self.extract_race_data_with_odds(soup, race_num, venue, date)
+            race_data = self.extract_race_data_with_odds(soup, race_num, venue, date, race_time)
             
             return race_data
             
@@ -336,7 +380,7 @@ class UltimateOddsScraper:
             logger.error(f"Error scraping race {race_num} for {venue}: {str(e)}")
             return None
     
-    def extract_race_data_with_odds(self, soup: BeautifulSoup, race_num: str, venue: str, date: str) -> Optional[Dict]:
+    def extract_race_data_with_odds(self, soup: BeautifulSoup, race_num: str, venue: str, date: str, race_time: str = 'Unknown') -> Optional[Dict]:
         """Extract race data with odds from BeautifulSoup object"""
         try:
             # Find race title
@@ -376,7 +420,7 @@ class UltimateOddsScraper:
             race_data = {
                 'venue': venue,
                 'race_number': race_num,
-                'race_time': 'Unknown',
+                'race_time': race_time,
                 'date': date,
                 'race_title': race_title_text,
                 'runners': runners
@@ -393,27 +437,85 @@ class UltimateOddsScraper:
         """Extract odds data for all runners"""
         try:
             # Bookmaker names in order
-            bookmaker_names = [
-                'TAB', 'TABtouch', 'Betr', 'BoomBet', 'BetfairBack', 'BetfairLay', 
-                'Picklebet', 'Ladbrokes', 'PointsBet', 'Neds', 'Colossal', 'bet365'
-            ]
+            # Extract bookmaker names from the HTML class attributes
+            bookmaker_elements = soup.find_all('div', class_=lambda x: x and 'oc-table-th' in x and 'agency-logo' in x)
+            bookmaker_names = []
+            for element in bookmaker_elements:
+                class_list = element.get('class', [])
+                # Find the bookmaker name in the class (it's usually the first class that's not oc-table-th or js-table-th)
+                for class_name in class_list:
+                    if class_name not in ['oc-table-th', 'js-table-th', 'agency-logo', 'table-head__bonus-bet']:
+                        bookmaker_names.append(class_name)
+                        break
             
-            # Find all odds elements
+            # Clean up bookmaker names - remove unwanted entries and handle duplicates
+            bookmaker_names_cleaned = []
+            seen_bookmakers = set()
+            betfair_count = 0
+            
+            for name in bookmaker_names:
+                # Skip unwanted entries
+                if name in ['Bet TypeWinPlace', 'bonus bet amount']:
+                    continue
+                
+                # Handle Betfair duplicates
+                if name == 'Betfair':
+                    betfair_count += 1
+                    if betfair_count == 1:
+                        bookmaker_names_cleaned.append('BetfairBack')
+                        seen_bookmakers.add('BetfairBack')
+                    elif betfair_count == 2:
+                        bookmaker_names_cleaned.append('BetfairLay')
+                        seen_bookmakers.add('BetfairLay')
+                # Handle Colossal duplicates (keep only ColossalBet)
+                elif name == 'Colossal' and 'ColossalBet' not in seen_bookmakers:
+                    bookmaker_names_cleaned.append('ColossalBet')
+                    seen_bookmakers.add('ColossalBet')
+                elif name == 'ColossalBet':
+                    bookmaker_names_cleaned.append('ColossalBet')
+                    seen_bookmakers.add('ColossalBet')
+                # Handle Betr/BetR duplicates (keep only Betr)
+                elif name == 'BetR' and 'Betr' not in seen_bookmakers:
+                    bookmaker_names_cleaned.append('Betr')
+                    seen_bookmakers.add('Betr')
+                elif name == 'Betr':
+                    bookmaker_names_cleaned.append('Betr')
+                    seen_bookmakers.add('Betr')
+                # Add other bookmakers if not already seen
+                elif name not in seen_bookmakers:
+                    bookmaker_names_cleaned.append(name)
+                    seen_bookmakers.add(name)
+            
+            bookmaker_names = bookmaker_names_cleaned
+            logger.info(f"Detected bookmakers from HTML: {bookmaker_names}")
+            
+            # Find all odds elements - be more specific to avoid picking up extra odds
             odds_elements = soup.find_all('div', class_='oc-table-td')
             
-            # Extract odds values
+            # Extract odds values - be more strict about what we consider valid odds
             odds_values = []
             for element in odds_elements:
                 text = element.get_text(strip=True)
-                if text.startswith('bet') and text[3:].replace('.', '').isdigit():
+                # More strict filtering: must start with 'bet' and be a reasonable odds value
+                if (text.startswith('bet') and 
+                    len(text) > 3 and 
+                    text[3:].replace('.', '').isdigit() and
+                    len(text) <= 8):  # Reasonable odds length (e.g., "bet1.50", "bet12.50")
                     try:
                         odds_value = float(text[3:])
-                        odds_values.append(odds_value)
+                        # Only include reasonable odds values (between 1.01 and 1000)
+                        if 1.01 <= odds_value <= 1000:
+                            odds_values.append(odds_value)
                     except ValueError:
                         continue
             
+            logger.info(f"Found {len(odds_values)} odds values from {len(odds_elements)} elements")
+            
+            # Use hardcoded 13 odds per horse (13 bookmakers)
+            odds_per_horse = 13
+            logger.info(f"Found {len(odds_values)} total odds for {len(runners)} runners, using {odds_per_horse} odds per horse")
+            
             # Distribute odds to runners
-            odds_per_horse = 13  # 13 bookmakers
             for i, runner in enumerate(runners):
                 start_idx = i * odds_per_horse
                 end_idx = start_idx + odds_per_horse
@@ -427,6 +529,9 @@ class UltimateOddsScraper:
                             'bookmaker': bookmaker_names[j],
                             'odds': odds_value
                         })
+                    else:
+                        # If we have more odds than bookmaker names, skip the extra ones
+                        logger.warning(f"More odds than bookmaker names for runner {i}, skipping extra odds")
             
             logger.info(f"Extracted odds for {len(runners)} runners")
             
@@ -467,6 +572,9 @@ class UltimateOddsScraper:
     def run_comprehensive_scrape(self):
         """Run comprehensive scraping for all today's races"""
         logger.info("Starting ultimate odds scraping...")
+        
+        # Clean up yesterday's data first
+        self.cleanup_yesterdays_data()
         
         # Get today's races from database
         todays_races = self.get_todays_races()

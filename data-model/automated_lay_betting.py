@@ -52,7 +52,7 @@ def main():
             
             # Check for races and place bets
             automation.scan_and_bet(
-                max_minutes_ahead=3000,  
+                max_minutes_ahead=300,  
                 stake_per_bet=1.0,
                 dry_run=True  
             )

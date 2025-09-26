@@ -2,6 +2,7 @@
 using Betfair.Services;
 using Betfair.AutomationServices;
 using Betfair.AutomatedServices;
+using Betfair.Services.Interfaces;
 using Betfair.Handlers;
 using Betfair.Services.Account;
 using Betfair.Services.HistoricalData;
@@ -97,11 +98,15 @@ builder.Services.AddSingleton<HorseRacingAutomationService>();
 
 // Register hosted services
 //builder.Services.AddHostedService<BetfairAutomationService>();
-//builder.Services.AddHostedService<MarketBackgroundWorker>();
+builder.Services.AddHostedService<MarketBackgroundWorker>();
 builder.Services.AddHostedService<HorseRacingStartupService>();
 //builder.Services.AddHostedService<StreamApiBackgroundWorker>();
+//builder.Services.AddHostedService<AutomatedMarketSubscriptionService>();
 
 builder.Services.AddScoped<DatabaseService>(provider => new DatabaseService(connectionString));
+
+// Register ResultsService
+builder.Services.AddScoped<IResultsService, ResultsService>();
 
 // Add controllers
 builder.Services.AddControllers();
