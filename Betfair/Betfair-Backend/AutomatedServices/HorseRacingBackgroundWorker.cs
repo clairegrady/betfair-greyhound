@@ -89,6 +89,23 @@ namespace Betfair.AutomatedServices
                             }
 
                             allMarketCatalogues.AddRange(marketCatalogues);
+                            
+                            // Process Market Books immediately while runner lookup is populated
+                            if (marketCatalogues.Any())
+                            {
+                                try
+                                {
+                                    _logger.LogDebug("🏇 Processing Market Books for event {EventId} with {MarketCount} markets", ev, marketCatalogues.Count);
+                                    var eventMarketIds = marketCatalogues.Select(mc => mc.MarketId).ToList();
+                                    await _horseRacingAutomationService.ProcessHorseMarketBooksAsync(eventMarketIds);
+                                    _logger.LogDebug("✅ Market Books processed for event {EventId}", ev);
+                                }
+                                catch (Exception mbEx)
+                                {
+                                    _logger.LogError(mbEx, "❌ Error processing Market Books for event {EventId}", ev);
+                                    // Continue with next event rather than failing completely
+                                }
+                            }
                         }
                         catch (Exception ex)
                         {
@@ -150,7 +167,7 @@ namespace Betfair.AutomatedServices
                 try
                 {
                     _logger.LogDebug("⏱️ Waiting 30 seconds before next cycle...");
-                    await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+                    await Task.Delay(TimeSpan.FromSeconds(120), stoppingToken);
                 }
                 catch (OperationCanceledException)
                 {

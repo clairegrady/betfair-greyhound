@@ -79,6 +79,10 @@ namespace Betfair.AutomatedServices
             _streamApiService.OrderChanged += OnOrderChanged;
             _streamApiService.StatusReceived += OnStatusReceived;
 
+            // Debug: Check what AppKey we're getting
+            _logger.LogWarning($"Retrieved AppKey from configuration: '{_authSettings.Value.AppKey}'");
+            _logger.LogWarning($"AppKey length: {_authSettings.Value.AppKey?.Length ?? 0}");
+
             // Connect to Stream API
             _logger.LogInformation("Connecting to Stream API...");
             var connected = await _streamApiService.ConnectAsync();
@@ -86,21 +90,18 @@ namespace Betfair.AutomatedServices
             {
                 throw new Exception("Failed to connect to Stream API");
             }
-            _logger.LogInformation("Successfully connected to Stream API");
 
-            // Debug: Check what AppKey we're getting
-            _logger.LogInformation($"Retrieved AppKey from configuration: '{_authSettings.Value.AppKey}'");
-            _logger.LogInformation($"AppKey length: {_authSettings.Value.AppKey?.Length ?? 0}");
+            _logger.LogWarning("Successfully connected to Stream API");
 
             if (string.IsNullOrEmpty(_authSettings.Value.AppKey))
             {
                 throw new Exception("AppKey is null or empty in configuration");
             }
 
-        // Get session token using regular BetfairAuthService (same as other APIs)
-        _logger.LogInformation("Getting session token for Stream API authentication...");
+        //Get session token using regular BetfairAuthService (same as other APIs)
+        _logger.LogWarning("Getting session token for Stream API authentication...");
         var sessionToken = await _authService.GetSessionTokenAsync();
-        _logger.LogInformation($"Retrieved session token: {sessionToken?.Substring(0, Math.Min(10, sessionToken?.Length ?? 0))}...");
+        _logger.LogWarning($"Retrieved session token: {sessionToken?.Substring(0, Math.Min(10, sessionToken?.Length ?? 0))}...");
 
         if (string.IsNullOrEmpty(sessionToken))
         {
@@ -108,11 +109,21 @@ namespace Betfair.AutomatedServices
         }
         
         // Authenticate with Stream API using same auth as other APIs
-        _logger.LogInformation($"Authenticating with Stream API using AppKey: '{_authSettings.Value.AppKey}' and SessionToken: '{sessionToken?.Substring(0, Math.Min(10, sessionToken?.Length ?? 0))}...'");
+        _logger.LogWarning($"=== CALLING AUTHENTICATEASYNC ===");
+        _logger.LogWarning($"Authenticating with Stream API using AppKey: '{_authSettings.Value.AppKey}' and SessionToken: '{sessionToken?.Substring(0, Math.Min(10, sessionToken?.Length ?? 0))}...'");
+        
+        if (string.IsNullOrEmpty(_authSettings.Value.AppKey))
+        {
+            _logger.LogError("CRITICAL: AppKey is null or empty in StreamApiBackgroundWorker!");
+            throw new Exception("AppKey is null or empty");
+        }
+        
         var authenticated = await _streamApiService.AuthenticateAsync(
             _authSettings.Value.AppKey,
             sessionToken
         );
+        
+        _logger.LogWarning($"=== AUTHENTICATEASYNC COMPLETED: {authenticated} ===");
 
             if (!authenticated)
             {
@@ -121,7 +132,7 @@ namespace Betfair.AutomatedServices
                 throw new Exception("Failed to authenticate with Stream API");
             }
 
-            _logger.LogInformation("Stream API authentication successful");
+            _logger.LogWarning("Stream API authentication successful");
 
             // Subscribe to orders
             await _streamApiService.SubscribeToOrdersAsync();

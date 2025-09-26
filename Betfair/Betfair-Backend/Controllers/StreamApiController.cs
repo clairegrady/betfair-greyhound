@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Betfair.Services;
+using Microsoft.Data.Sqlite;
 
 namespace Betfair.Controllers
 {
@@ -9,13 +10,16 @@ namespace Betfair.Controllers
     {
         private readonly IStreamApiService _streamApiService;
         private readonly ILogger<StreamApiController> _logger;
+        private readonly string _connectionString;
 
         public StreamApiController(
             IStreamApiService streamApiService,
-            ILogger<StreamApiController> logger)
+            ILogger<StreamApiController> logger,
+            IConfiguration configuration)
         {
             _streamApiService = streamApiService;
             _logger = logger;
+            _connectionString = configuration.GetConnectionString("DefaultDb");
         }
 
         [HttpGet("status")]
@@ -100,6 +104,56 @@ namespace Betfair.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error sending heartbeat");
+                return BadRequest(new { Success = false, Message = ex.Message });
+            }
+        }
+
+        [HttpGet("bsp/{marketId}")]
+        public async Task<IActionResult> GetBspData(string marketId)
+        {
+            try
+            {
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+
+                var query = @"
+                    SELECT MarketId, SelectionId, RunnerName, NearPrice, FarPrice, Average, UpdatedAt
+                    FROM StreamBspProjections 
+                    WHERE MarketId = @marketId
+                    ORDER BY SelectionId";
+
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@marketId", marketId);
+
+                using var reader = await command.ExecuteReaderAsync();
+                
+                var bspProjections = new List<object>();
+                while (await reader.ReadAsync())
+                {
+                    bspProjections.Add(new
+                    {
+                        marketId = reader["MarketId"].ToString(),
+                        selectionId = Convert.ToInt32(reader["SelectionId"]),
+                        runnerName = reader["RunnerName"].ToString(),
+                        nearPrice = reader["NearPrice"] == DBNull.Value ? (double?)null : Convert.ToDouble(reader["NearPrice"]),
+                        farPrice = reader["FarPrice"] == DBNull.Value ? (double?)null : Convert.ToDouble(reader["FarPrice"]),
+                        average = reader["Average"] == DBNull.Value ? (double?)null : Convert.ToDouble(reader["Average"]),
+                        updatedAt = Convert.ToDateTime(reader["UpdatedAt"])
+                    });
+                }
+
+                return Ok(new
+                {
+                    marketId,
+                    bspProjections,
+                    count = bspProjections.Count,
+                    source = "Stream API",
+                    retrievedAt = DateTime.UtcNow
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting Stream API BSP data for market {MarketId}", marketId);
                 return BadRequest(new { Success = false, Message = ex.Message });
             }
         }

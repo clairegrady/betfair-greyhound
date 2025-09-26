@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using Betfair.Models;
 
 namespace Betfair.Services
 {
@@ -12,8 +13,10 @@ namespace Betfair.Services
         Task SubscribeToOrdersAsync();
         Task UnsubscribeFromMarketAsync(string marketId);
         Task SendHeartbeatAsync();
+
         bool IsConnected { get; }
         bool IsAuthenticated { get; }
+
         event EventHandler<MarketChangeEventArgs> MarketChanged;
         event EventHandler<OrderChangeEventArgs> OrderChanged;
         event EventHandler<StatusEventArgs> StatusReceived;
@@ -30,6 +33,8 @@ namespace Betfair.Services
     public class OrderChangeEventArgs : EventArgs
     {
         public string OrderId { get; set; }
+        public bool? FullImage { get; set; }
+        public List<Order> Orders { get; set; }
         public string ChangeType { get; set; }
         public object OrderData { get; set; }
         public DateTime Timestamp { get; set; }

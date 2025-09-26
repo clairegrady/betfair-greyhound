@@ -173,39 +173,61 @@ public class OddsController : ControllerBase
             clearBspCommand.Parameters.AddWithValue("@marketId", marketId);
             await clearBspCommand.ExecuteNonQueryAsync();
             
-            int totalLayPrices = 0;
+            int totalOddsRecords = 0;
             
-            // Insert fresh odds data into CurrentOdds table
+            // Insert fresh odds data into CurrentOdds table with best back and lay odds
             foreach (var marketBook in marketBookResponse.Result)
             {
                 foreach (var runner in marketBook.Runners)
                 {
-                    if (runner.Exchange?.AvailableToLay != null)
+                    // Get best back odds (highest price)
+                    double? bestBackPrice = null;
+                    double? bestBackSize = null;
+                    if (runner.Exchange?.AvailableToBack != null && runner.Exchange.AvailableToBack.Any())
                     {
-                        foreach (var lay in runner.Exchange.AvailableToLay)
-                        {
-                            var insertQuery = @"
-                                INSERT INTO CurrentOdds
-                                (MarketId, SelectionId, RunnerName, Price, Size, Status, LastPriceTraded, TotalMatched, UpdatedAt)
-                                VALUES
-                                ($MarketId, $SelectionId, $RunnerName, $Price, $Size, $Status, $LastPriceTraded, $TotalMatched, $UpdatedAt)";
-                            
-                            using var priceCommand = new SqliteCommand(insertQuery, connection);
-                            priceCommand.Transaction = (SqliteTransaction)transaction;
+                        var bestBack = runner.Exchange.AvailableToBack.OrderByDescending(b => b.Price).First();
+                        bestBackPrice = (double)bestBack.Price;
+                        bestBackSize = (double)bestBack.Size;
+                    }
+                    
+                    // Get best lay odds (lowest price)
+                    double? bestLayPrice = null;
+                    double? bestLaySize = null;
+                    if (runner.Exchange?.AvailableToLay != null && runner.Exchange.AvailableToLay.Any())
+                    {
+                        var bestLay = runner.Exchange.AvailableToLay.OrderBy(l => l.Price).First();
+                        bestLayPrice = (double)bestLay.Price;
+                        bestLaySize = (double)bestLay.Size;
+                    }
+                    
+                    // Only insert if we have at least back or lay odds
+                    if (bestBackPrice.HasValue || bestLayPrice.HasValue)
+                    {
+                        var insertQuery = @"
+                            INSERT INTO CurrentOdds
+                            (MarketId, SelectionId, RunnerName, Price, Size, Status, LastPriceTraded, TotalMatched, UpdatedAt, best_back_price, best_lay_price, best_back_size, best_lay_size)
+                            VALUES
+                            ($MarketId, $SelectionId, $RunnerName, $Price, $Size, $Status, $LastPriceTraded, $TotalMatched, $UpdatedAt, $BestBackPrice, $BestLayPrice, $BestBackSize, $BestLaySize)";
+                        
+                        using var priceCommand = new SqliteCommand(insertQuery, connection);
+                        priceCommand.Transaction = (SqliteTransaction)transaction;
 
-                            priceCommand.Parameters.AddWithValue("$MarketId", marketId);
-                            priceCommand.Parameters.AddWithValue("$SelectionId", runner.SelectionId);
-                            priceCommand.Parameters.AddWithValue("$RunnerName", runner.Description?.RunnerName ?? $"Horse {runner.SelectionId}");
-                            priceCommand.Parameters.AddWithValue("$Price", (double)lay.Price);
-                            priceCommand.Parameters.AddWithValue("$Size", (double)lay.Size);
-                            priceCommand.Parameters.AddWithValue("$Status", runner.Status ?? (object)DBNull.Value);
-                            priceCommand.Parameters.AddWithValue("$LastPriceTraded", runner.LastPriceTraded ?? (object)DBNull.Value);
-                            priceCommand.Parameters.AddWithValue("$TotalMatched", runner.TotalMatched ?? (object)DBNull.Value);
-                            priceCommand.Parameters.AddWithValue("$UpdatedAt", DateTime.UtcNow);
+                        priceCommand.Parameters.AddWithValue("$MarketId", marketId);
+                        priceCommand.Parameters.AddWithValue("$SelectionId", runner.SelectionId);
+                        priceCommand.Parameters.AddWithValue("$RunnerName", runner.Description?.RunnerName ?? $"Horse {runner.SelectionId}");
+                        priceCommand.Parameters.AddWithValue("$Price", bestBackPrice ?? bestLayPrice ?? 0);
+                        priceCommand.Parameters.AddWithValue("$Size", bestBackSize ?? bestLaySize ?? 0);
+                        priceCommand.Parameters.AddWithValue("$Status", runner.Status ?? (object)DBNull.Value);
+                        priceCommand.Parameters.AddWithValue("$LastPriceTraded", runner.LastPriceTraded ?? (object)DBNull.Value);
+                        priceCommand.Parameters.AddWithValue("$TotalMatched", runner.TotalMatched ?? (object)DBNull.Value);
+                        priceCommand.Parameters.AddWithValue("$UpdatedAt", DateTime.UtcNow);
+                        priceCommand.Parameters.AddWithValue("$BestBackPrice", bestBackPrice ?? (object)DBNull.Value);
+                        priceCommand.Parameters.AddWithValue("$BestLayPrice", bestLayPrice ?? (object)DBNull.Value);
+                        priceCommand.Parameters.AddWithValue("$BestBackSize", bestBackSize ?? (object)DBNull.Value);
+                        priceCommand.Parameters.AddWithValue("$BestLaySize", bestLaySize ?? (object)DBNull.Value);
 
-                            await priceCommand.ExecuteNonQueryAsync();
-                            totalLayPrices++;
-                        }
+                        await priceCommand.ExecuteNonQueryAsync();
+                        totalOddsRecords++;
                     }
                 }
             }
@@ -249,19 +271,69 @@ public class OddsController : ControllerBase
             
             await transaction.CommitAsync();
             
-            _logger.LogInformation("Successfully refreshed {Count} lay prices and {BspCount} BSP projections for market {MarketId}", totalLayPrices, totalBspProjections, marketId);
+            _logger.LogInformation("Successfully refreshed {Count} odds records and {BspCount} BSP projections for market {MarketId}", totalOddsRecords, totalBspProjections, marketId);
             
             return Ok(new
             {
                 marketId,
                 message = "Odds refreshed successfully",
-                layPricesCount = totalLayPrices,
+                oddsRecordsCount = totalOddsRecords,
+                bspProjectionsCount = totalBspProjections,
                 refreshedAt = DateTime.UtcNow
             });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error refreshing odds for market {MarketId}", marketId);
+            return StatusCode(500, new { message = "Internal server error" });
+        }
+    }
+
+    [HttpGet("bsp/{marketId}")]
+    public async Task<IActionResult> GetBspProjections(string marketId)
+    {
+        try
+        {
+            using var connection = new SqliteConnection(_connectionString);
+            await connection.OpenAsync();
+
+            var query = @"
+                SELECT MarketId, SelectionId, RunnerName, NearPrice, FarPrice, Average, UpdatedAt
+                FROM BSPProjections 
+                WHERE MarketId = @marketId
+                ORDER BY SelectionId";
+
+            using var command = new SqliteCommand(query, connection);
+            command.Parameters.AddWithValue("@marketId", marketId);
+
+            using var reader = await command.ExecuteReaderAsync();
+            
+            var bspProjections = new List<object>();
+            while (await reader.ReadAsync())
+            {
+                bspProjections.Add(new
+                {
+                    marketId = reader["MarketId"].ToString(),
+                    selectionId = Convert.ToInt32(reader["SelectionId"]),
+                    runnerName = reader["RunnerName"].ToString(),
+                    nearPrice = reader["NearPrice"] == DBNull.Value ? (double?)null : Convert.ToDouble(reader["NearPrice"]),
+                    farPrice = reader["FarPrice"] == DBNull.Value ? (double?)null : Convert.ToDouble(reader["FarPrice"]),
+                    average = reader["Average"] == DBNull.Value ? (double?)null : Convert.ToDouble(reader["Average"]),
+                    updatedAt = Convert.ToDateTime(reader["UpdatedAt"])
+                });
+            }
+
+            return Ok(new
+            {
+                marketId,
+                bspProjections,
+                count = bspProjections.Count,
+                retrievedAt = DateTime.UtcNow
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting BSP projections for market {MarketId}", marketId);
             return StatusCode(500, new { message = "Internal server error" });
         }
     }

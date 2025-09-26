@@ -52,7 +52,7 @@ namespace Betfair.AutomatedServices
                     }
 
                     Console.WriteLine("Waiting 2 minutes before next cycle...");
-                    await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+                    await Task.Delay(TimeSpan.FromSeconds(600), stoppingToken);
                 }
                 catch (Exception ex)
                 {

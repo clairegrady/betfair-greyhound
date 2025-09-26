@@ -1,6 +1,36 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Text.Json.Serialization;
+
+// Custom converter to handle "NaN" strings from Betfair API
+public class NaNSafeDoubleConverter : JsonConverter<double?>
+{
+    public override double? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            string stringValue = reader.GetString();
+            if (stringValue == "NaN")
+                return null;
+            if (double.TryParse(stringValue, out double result))
+                return result;
+        }
+        else if (reader.TokenType == JsonTokenType.Number)
+        {
+            return reader.GetDouble();
+        }
+        return null;
+    }
+
+    public override void Write(Utf8JsonWriter writer, double? value, JsonSerializerOptions options)
+    {
+        if (value.HasValue)
+            writer.WriteNumberValue(value.Value);
+        else
+            writer.WriteNullValue();
+    }
+}
 
 namespace Betfair.Models
 {
@@ -28,7 +58,7 @@ namespace Betfair.Models
     {
         public AuthenticationMessage()
         {
-            Op = "authentication";
+            // Op will be set by the service when sending
         }
 
         [JsonPropertyName("appKey")]
@@ -244,7 +274,7 @@ namespace Betfair.Models
         [JsonPropertyName("con")]
         public bool? Con { get; set; }
 
-        [JsonPropertyName("marketChanges")]
+        [JsonPropertyName("mc")]
         public List<MarketChange> MarketChanges { get; set; }
     }
 
@@ -413,6 +443,7 @@ namespace Betfair.Models
         public List<List<double>> Trd { get; set; }
 
         [JsonPropertyName("spf")]
+        [JsonConverter(typeof(NaNSafeDoubleConverter))]
         public double? Spf { get; set; }
 
         [JsonPropertyName("atl")]
@@ -464,6 +495,7 @@ namespace Betfair.Models
         public List<List<double>> Trd { get; set; }
 
         [JsonPropertyName("spf")]
+        [JsonConverter(typeof(NaNSafeDoubleConverter))]
         public double? Spf { get; set; }
 
         [JsonPropertyName("atl")]
