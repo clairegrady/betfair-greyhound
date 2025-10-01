@@ -14,12 +14,14 @@ public class GreyhoundAutomationService
     private readonly IMarketApiService _marketApiService;
     private readonly ListMarketCatalogueDb _listMarketCatalogueDb;
     private readonly MarketBookDb _marketBookDb;
+    private readonly EventDb2 _eventDb;
     
-    public GreyhoundAutomationService(IMarketApiService marketApiService, ListMarketCatalogueDb listMarketCatalogueDb, MarketBookDb marketBookDb)
+    public GreyhoundAutomationService(IMarketApiService marketApiService, ListMarketCatalogueDb listMarketCatalogueDb, MarketBookDb marketBookDb, EventDb2 eventDb)
     {
         _marketApiService = marketApiService;
         _listMarketCatalogueDb = listMarketCatalogueDb;
         _marketBookDb = marketBookDb;
+        _eventDb = eventDb;
     }
     public async Task ProcessGreyhoundMarketBooksAsync(List<string> marketIds)
     {
@@ -82,11 +84,13 @@ public class GreyhoundAutomationService
             
             if (marketBooks.Any())
             {
+                Console.WriteLine($"🐕 Inserting {marketBooks.Count} greyhound market books into database...");
                 await _marketBookDb.InsertGreyhoundMarketBooksIntoDatabase(marketBooks);
+                Console.WriteLine($"✅ Successfully inserted {marketBooks.Count} greyhound market books");
             }
             else
             {
-                //Console.WriteLine("No market books to insert.");
+                Console.WriteLine("❌ No greyhound market books to insert.");
             }
         }
         else
@@ -95,24 +99,28 @@ public class GreyhoundAutomationService
         }
     }
 
-    public async Task<List<MarketCatalogue>> ProcessGreyhoundMarketCataloguesAsync(string? eventId = null, string? competitionId = null)
+    public async Task<List<MarketCatalogue>> ProcessGreyhoundMarketCataloguesAsync(string? targetEventId = null, string? competitionId = null)
 {
-    var marketCatalogueJson = await _marketApiService.ListMarketCatalogue(eventId: eventId, competitionId: competitionId);
+    Console.WriteLine($"🔍 ProcessGreyhoundMarketCataloguesAsync called with eventId: {targetEventId}, competitionId: {competitionId}");
+    
+    var marketCatalogueJson = await _marketApiService.ListMarketCatalogue(eventId: targetEventId, competitionId: competitionId);
+    Console.WriteLine($"📥 Market catalogue JSON response length: {marketCatalogueJson?.Length ?? 0}");
+    
     var marketCatalogueApiResponse = JsonSerializer.Deserialize<ApiResponse<MarketCatalogue>>(marketCatalogueJson);
 
     if (marketCatalogueApiResponse == null)
     {
-        //Console.WriteLine("Failed to deserialize the market catalogue JSON.");
+        Console.WriteLine("❌ Failed to deserialize the market catalogue JSON.");
         return new List<MarketCatalogue>();
     }
     else
     {
-        //Console.WriteLine($"Deserialized Market Catalogue Result Count: {marketCatalogueApiResponse.Result?.Count()}");
+        Console.WriteLine($"✅ Deserialized Market Catalogue Result Count: {marketCatalogueApiResponse.Result?.Count()}");
     }
 
     if (marketCatalogueApiResponse?.Result == null || !marketCatalogueApiResponse.Result.Any())
     {
-        //Console.WriteLine("No market catalogues found.");
+        Console.WriteLine("❌ No market catalogues found in response.");
         return new List<MarketCatalogue>();
     }
 
@@ -161,17 +169,39 @@ public class GreyhoundAutomationService
 
     var today = DateTime.Now.Date;
 
+    Console.WriteLine($"🔍 Filtering {marketCatalogues.Count} market catalogues for eventId: {targetEventId}");
+    Console.WriteLine($"🔍 Today's date: {today}");
+    
     var filteredMarketCatalogues = marketCatalogues
         .Where(catalogue =>
-            catalogue.Event.Id.Equals(eventId, StringComparison.OrdinalIgnoreCase) &&
-            Regex.IsMatch(catalogue.MarketName, @"^R\d{1,2}") &&
-            catalogue.Event.OpenDate.HasValue &&
-            catalogue.Event.OpenDate.Value.ToLocalTime().Date == today)
+        {
+            var eventIdMatch = catalogue.Event?.Id?.Equals(targetEventId, StringComparison.OrdinalIgnoreCase) ?? false;
+            var marketNameMatch = Regex.IsMatch(catalogue.MarketName, @"^R\d{1,2}");
+            var hasOpenDate = catalogue.Event?.OpenDate.HasValue ?? false;
+            var isToday = hasOpenDate && catalogue.Event.OpenDate.Value.ToLocalTime().Date == today;
+            
+            Console.WriteLine($"🔍 Market: {catalogue.MarketName}, EventId: {catalogue.Event?.Id}, EventIdMatch: {eventIdMatch}, MarketNameMatch: {marketNameMatch}, HasOpenDate: {hasOpenDate}, IsToday: {isToday}");
+            
+            return eventIdMatch && marketNameMatch && hasOpenDate && isToday;
+        })
         .ToList();
+
+    Console.WriteLine($"🔍 Filtered to {filteredMarketCatalogues.Count} market catalogues");
 
     if (filteredMarketCatalogues.Any())
     {
         await _listMarketCatalogueDb.InsertMarketsIntoDatabase(filteredMarketCatalogues);
+        
+        // Also store in EventMarkets table for greyhound market book insertion
+        foreach (var marketCatalogue in filteredMarketCatalogues)
+        {
+            if (marketCatalogue.Event != null && !string.IsNullOrEmpty(marketCatalogue.Event.Id))
+            {
+                var catalogueEventId = marketCatalogue.Event.Id;
+                var eventName = marketCatalogue.Event.Name ?? "Unknown";
+                await _eventDb.InsertEventMarketsAsync(catalogueEventId, eventName, new List<MarketCatalogue> { marketCatalogue });
+            }
+        }
     }
     else
     {

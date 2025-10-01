@@ -296,7 +296,7 @@ class LayBettingAutomation:
             LastPriceTraded,
             TotalMatched,
             0 as cloth_number
-        FROM CurrentOdds
+        FROM CurrentWinOdds
         WHERE MarketId = ?
         GROUP BY SelectionId
         ORDER BY best_lay_price

@@ -40,6 +40,8 @@ public class BetfairAuthService
         _settings = settings.Value;
     }
 
+    public string AppKey => _appKey;
+
     public async Task<string> GetSessionTokenAsync()
     {
         // Always get fresh token if expired or within 5 minutes of expiry

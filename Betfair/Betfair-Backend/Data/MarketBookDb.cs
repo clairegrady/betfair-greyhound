@@ -311,16 +311,20 @@ public class MarketBookDb
 
     public async Task InsertGreyhoundMarketBooksIntoDatabase(List<MarketBook<ApiRunner>> marketBooks)
     {
+        Console.WriteLine($"🔗 Opening database connection for {marketBooks.Count} greyhound market books");
         using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync();
         using var transaction = await connection.BeginTransactionAsync();
 
         try
         {
+            Console.WriteLine($"📊 Processing {marketBooks.Count} greyhound market books for database insertion");
+            int totalInserted = 0;
             foreach (var marketBook in marketBooks)
             {
                 string marketId = marketBook.MarketId;
                 var marketInfo = await GetMarketNameAndEventNameByMarketId(connection, marketId);
+                Console.WriteLine($"🔍 Processing market {marketId}: {marketInfo?.MarketName} - {marketInfo?.EventName}");
 
                 foreach (var runner in marketBook.Runners)
                 {
@@ -331,9 +335,9 @@ public class MarketBookDb
                             using var command = connection.CreateCommand();
                             command.CommandText = @"
                                 INSERT INTO GreyhoundMarketBook
-                                (MarketId, MarketName, SelectionId, Status, PriceType, Price, Size)
+                                (MarketId, MarketName, SelectionId, Status, PriceType, Price, Size, RunnerName, Venue, EventDate, EventName, Handicap, RunnerId)
                                 VALUES
-                                ($MarketId, $MarketName, $SelectionId, $Status, $PriceType, $Price, $Size)";
+                                ($MarketId, $MarketName, $SelectionId, $Status, $PriceType, $Price, $Size, $RunnerName, $Venue, $EventDate, $EventName, $Handicap, $RunnerId)";
 
                             command.Parameters.AddWithValue("$MarketId", marketId ?? (object)DBNull.Value);
                             command.Parameters.AddWithValue("$MarketName", marketInfo?.MarketName ?? (object)DBNull.Value);
@@ -342,8 +346,15 @@ public class MarketBookDb
                             command.Parameters.AddWithValue("$PriceType", "AvailableToBack");
                             command.Parameters.AddWithValue("$Price", (double)back.Price);
                             command.Parameters.AddWithValue("$Size", (double)back.Size);
+                            command.Parameters.AddWithValue("$RunnerName", runner.Description?.RunnerName ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("$Venue", (object)DBNull.Value); // Not available for horse racing
+                            command.Parameters.AddWithValue("$EventDate", (object)DBNull.Value); // Not available for horse racing
+                            command.Parameters.AddWithValue("$EventName", marketInfo?.EventName ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("$Handicap", runner.Handicap);
+                            command.Parameters.AddWithValue("$RunnerId", runner.Description?.Metadata?.RunnerId ?? (object)DBNull.Value);
 
                             await command.ExecuteNonQueryAsync();
+                            totalInserted++;
                         }
                     }
 
@@ -354,9 +365,9 @@ public class MarketBookDb
                             using var command = connection.CreateCommand();
                             command.CommandText = @"
                                 INSERT INTO GreyhoundMarketBook
-                                (MarketId, MarketName, SelectionId, Status, PriceType, Price, Size)
+                                (MarketId, MarketName, SelectionId, Status, PriceType, Price, Size, RunnerName, Venue, EventDate, EventName, Handicap, RunnerId)
                                 VALUES
-                                ($MarketId, $MarketName, $SelectionId, $Status, $PriceType, $Price, $Size)";
+                                ($MarketId, $MarketName, $SelectionId, $Status, $PriceType, $Price, $Size, $RunnerName, $Venue, $EventDate, $EventName, $Handicap, $RunnerId)";
 
                             command.Parameters.AddWithValue("$MarketId", marketId ?? (object)DBNull.Value);
                             command.Parameters.AddWithValue("$MarketName", marketInfo?.MarketName ?? (object)DBNull.Value);
@@ -365,20 +376,27 @@ public class MarketBookDb
                             command.Parameters.AddWithValue("$PriceType", "AvailableToLay");
                             command.Parameters.AddWithValue("$Price", (double)lay.Price);
                             command.Parameters.AddWithValue("$Size", (double)lay.Size);
+                            command.Parameters.AddWithValue("$RunnerName", runner.Description?.RunnerName ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("$Venue", (object)DBNull.Value); // Not available for horse racing
+                            command.Parameters.AddWithValue("$EventDate", (object)DBNull.Value); // Not available for horse racing
+                            command.Parameters.AddWithValue("$EventName", marketInfo?.EventName ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("$Handicap", runner.Handicap);
+                            command.Parameters.AddWithValue("$RunnerId", runner.Description?.Metadata?.RunnerId ?? (object)DBNull.Value);
 
                             await command.ExecuteNonQueryAsync();
+                            totalInserted++;
                         }
                     }
                 }
             }
             await transaction.CommitAsync();
-            //Console.WriteLine("Greyhound market books inserted successfully.");
+            Console.WriteLine($"✅ Greyhound market books inserted successfully. Total records inserted: {totalInserted}");
         }
         catch (Exception ex)
         {
             await transaction.RollbackAsync();
-            //Console.WriteLine($"Error inserting greyhound market books: {ex.Message}");
-            //Console.WriteLine(ex.ToString());
+            Console.WriteLine($"❌ Error inserting greyhound market books: {ex.Message}");
+            Console.WriteLine($"📋 Stack trace: {ex.StackTrace}");
         }
     }
 

@@ -98,30 +98,20 @@ class BetfairResultsFetcher:
                 status = runner.get('status', '')
                 adjustment_factor = runner.get('adjustmentFactor', 0)
                 
-                # Determine finishing position based on status
-                if status == 'WINNER':
-                    finishing_position = 1
-                elif status == 'LOSER':
-                    finishing_position = 2  # All losers are position 2+
-                else:
-                    finishing_position = 0  # REMOVED or other status
-                
-                horses.append({
-                    'selection_id': selection_id,
-                    'finishing_position': finishing_position,
-                    'status': status,
-                    'adjustment_factor': adjustment_factor
-                })
+                # Only include horses that actually ran (not REMOVED)
+                if status in ['WINNER', 'LOSER']:
+                    horses.append({
+                        'selection_id': selection_id,
+                        'status': status,
+                        'adjustment_factor': adjustment_factor
+                    })
             
-            # Sort by finishing position (winner first)
-            horses.sort(key=lambda x: x['finishing_position'] if x['finishing_position'] > 0 else 999)
+            # Sort by status (WINNER first, then LOSER)
+            horses.sort(key=lambda x: 0 if x['status'] == 'WINNER' else 1)
             
-            # Assign proper positions
-            position = 1
-            for horse in horses:
-                if horse['finishing_position'] > 0:
-                    horse['finishing_position'] = position
-                    position += 1
+            # Assign proper finishing positions
+            for i, horse in enumerate(horses):
+                horse['finishing_position'] = i + 1
             
             return {
                 'market_id': market_id,
@@ -147,7 +137,7 @@ class BetfairResultsFetcher:
                 # Get race info from simulation results
                 cursor.execute('''
                     SELECT DISTINCT venue, race_number, race_date 
-                    FROM simulation_results 
+                    FROM valid_simulation_results 
                     WHERE market_id = ?
                     LIMIT 1
                 ''', (market_id,))
@@ -159,12 +149,13 @@ class BetfairResultsFetcher:
                 
                 venue, race_number, race_date = race_info
                 
-                # Insert race data
+                # Insert race data with market_id
                 cursor.execute('''
                     INSERT OR REPLACE INTO race_results 
-                    (race_date, venue, race_number, race_name, race_time, distance, track_condition, weather)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    (market_id, race_date, venue, race_number, race_name, race_time, distance, track_condition, weather)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
+                    market_id,
                     race_date,
                     venue,
                     race_number,
@@ -175,21 +166,27 @@ class BetfairResultsFetcher:
                     ''
                 ))
                 
-                race_id = cursor.lastrowid
+                # Get the race_id (either from insert or existing record)
+                cursor.execute('SELECT id FROM race_results WHERE market_id = ?', (market_id,))
+                race_id = cursor.fetchone()[0]
+                
+                # Delete existing horse results for this race to avoid duplicates
+                cursor.execute('DELETE FROM horse_results WHERE race_id = ?', (race_id,))
                 
                 # Insert horse data
                 for horse in horses:
                     cursor.execute('''
-                        INSERT OR REPLACE INTO horse_results 
-                        (race_id, finishing_position, horse_name, starting_price, jockey, trainer)
-                        VALUES (?, ?, ?, ?, ?, ?)
+                        INSERT INTO horse_results 
+                        (race_id, finishing_position, horse_name, starting_price, jockey, trainer, status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
                     ''', (
                         race_id,
                         horse.get('finishing_position', 0),
                         f"Horse {horse.get('selection_id', '')}",
                         horse.get('adjustment_factor', 0.0),
                         '',
-                        ''
+                        '',
+                        horse.get('status', '')
                     ))
                 
                 stored_count += 1

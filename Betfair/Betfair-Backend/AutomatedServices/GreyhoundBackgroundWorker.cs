@@ -5,20 +5,21 @@ using Betfair.Models.Event;
 using Betfair.Models.Market;
 using Betfair.Services.Account;
 using Betfair.Services.HistoricalData;
+using Betfair.Services.Interfaces;
 
 namespace Betfair.AutomatedServices;
 public class GreyhoundBackgroundWorker : BackgroundService
 {
     private readonly GreyhoundAutomationService _greyhoundAutomationService;
     private readonly EventAutomationService _eventAutomationService;
-    private readonly PlaceOrderService _placeOrderService;
+    private readonly IPlaceOrderService _placeOrderService;
     private readonly AccountService _accountService;
     private readonly HistoricalDataService _historicalDataService;
 
     public GreyhoundBackgroundWorker(
         GreyhoundAutomationService greyhoundAutomationService,
         EventAutomationService eventAutomationService,
-        PlaceOrderService placeOrderService,
+        IPlaceOrderService placeOrderService,
         AccountService accountService,
         HistoricalDataService historicalDataService)
     {
@@ -31,49 +32,69 @@ public class GreyhoundBackgroundWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var request = new HistoricalDataRequest(
-            sport: "Soccer",
-            plan: "Basic Plan",
-            fromDay: 1, fromMonth: 11, fromYear: 2024,
-            toDay: 1, toMonth: 12, toYear: 2024,
-            marketTypes: new List<string> { "WIN", "LOSS" },
-            countries: new List<string> { "AU" },
-            fileTypes: new List<string> { "E" }
-        );
-
+        Console.WriteLine("GreyhoundBackgroundWorker started at {0}", DateTime.Now);
+        
         while (!stoppingToken.IsCancellationRequested)
         {
-            var eventList = await _eventAutomationService.FetchAndStoreListOfEventsAsync(new List<string> {"4339"});
-            var auEventList = eventList.Where(e => e.Event.CountryCode == "AU").ToList();
-
-            var eventStrings = ConvertEventListToStrings(auEventList);
-            var marketCatalogues = new List<MarketCatalogue>();
-
-            foreach (var ev in eventStrings)
+            try
             {
-                var result = await _greyhoundAutomationService.ProcessGreyhoundMarketCataloguesAsync(ev);
-                marketCatalogues.AddRange(result);
+                // Fetch Australian greyhound events
+                var eventList = await _eventAutomationService.FetchAndStoreListOfEventsAsync(new List<string> {"4339"});
+                var auEventList = eventList.Where(e => e.Event.CountryCode == "AU").ToList();
+                
+                Console.WriteLine($"Found {auEventList.Count} Australian greyhound events");
+
+                if (auEventList.Any())
+                {
+                    var eventStrings = ConvertEventListToStrings(auEventList);
+                    var marketCatalogues = new List<MarketCatalogue>();
+
+                    // Process market catalogues for each event
+                    foreach (var ev in eventStrings)
+                    {
+                        try
+                        {
+                            Console.WriteLine($"🔍 Processing event: {ev}");
+                            var result = await _greyhoundAutomationService.ProcessGreyhoundMarketCataloguesAsync(ev);
+                            Console.WriteLine($"🔍 Got {result.Count} market catalogues for event {ev}");
+                            marketCatalogues.AddRange(result);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"❌ Error processing event {ev}: {ex.Message}");
+                        }
+                    }
+                    
+                    Console.WriteLine($"🔍 Total market catalogues collected: {marketCatalogues.Count}");
+
+                    if (marketCatalogues.Any())
+                    {
+                        var marketIds = marketCatalogues
+                            .Select(market => market.MarketId)
+                            .ToList();
+
+                        Console.WriteLine($"🐕 Processing {marketIds.Count} greyhound market books");
+                        await _greyhoundAutomationService.ProcessGreyhoundMarketBooksAsync(marketIds);
+                        Console.WriteLine($"✅ Successfully processed {marketIds.Count} greyhound markets");
+                    }
+                    else
+                    {
+                        Console.WriteLine("❌ No greyhound market catalogues found");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("No Australian greyhound events found");
+                }
+
+                // Wait 2 minutes before next iteration
+                await Task.Delay(TimeSpan.FromMinutes(2), stoppingToken);
             }
-
-            var marketIds = marketCatalogues
-                .Select(market => market.MarketId)
-                .ToList();
-
-            await _greyhoundAutomationService.ProcessGreyhoundMarketBooksAsync(marketIds);
-
-            var dataPackageList = await _historicalDataService.ListDataPackagesAsync();
-            var filteredCollectionOptions = await _historicalDataService.GetCollectionOptionsAsync(request.Sport, request.Plan, request.FromDay, request.FromMonth, request.FromYear, request.ToDay, request.ToMonth, request.ToYear, request.MarketTypes, request.Countries, request.FileTypes);
-
-            //Console.WriteLine($"Data Package List: {dataPackageList}");
-            var filteredAdvDataSizeOptions = await _historicalDataService.GetDataSizeAsync(request);
-            //Console.WriteLine($"Filtered Collection Options: {filteredCollectionOptions}");
-
-            //Console.WriteLine($"Filtered Adv Data Size Options: {filteredAdvDataSizeOptions}");
-
-            var accountFundsJson = await _accountService.GetAccountFundsAsync();
-            DisplayHandler.DisplayAccountData(accountFundsJson);
-
-            await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in GreyhoundBackgroundWorker: {ex.Message}");
+                await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
+            }
         }
     }
 
