@@ -9,6 +9,7 @@ using Betfair.Services.HistoricalData;
 using Betfair.Settings;
 using Microsoft.AspNetCore.Connections;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Logging.AddConsole();
@@ -89,8 +90,27 @@ builder.Services.AddSingleton(new HistoricalDataDb(connectionString));
 builder.Services.AddScoped<CompetitionAutomationService>();
 builder.Services.AddScoped<MarketAutomationService>();
 builder.Services.AddScoped<EventAutomationService>();
-builder.Services.AddScoped<GreyhoundAutomationService>();
+builder.Services.AddScoped<GreyhoundAutomationService>((provider) =>
+{
+    var greyhoundMarketApiService = provider.GetRequiredService<GreyhoundMarketApiService>();
+    var listMarketCatalogueDb = provider.GetRequiredService<ListMarketCatalogueDb>();
+    var marketBookDb = provider.GetRequiredService<MarketBookDb>();
+    var eventDb = provider.GetRequiredService<EventDb2>();
+    return new GreyhoundAutomationService(greyhoundMarketApiService, listMarketCatalogueDb, marketBookDb, eventDb);
+});
 builder.Services.AddSingleton<HorseRacingAutomationService>();
+
+// Register greyhound services
+builder.Services.AddScoped<GreyhoundResultsService>();
+builder.Services.AddScoped<GreyhoundMarketApiService>((provider) =>
+{
+    var baseService = provider.GetRequiredService<IMarketApiService>();
+    var logger = provider.GetRequiredService<ILogger<GreyhoundMarketApiService>>();
+    var httpClient = provider.GetRequiredService<HttpClient>();
+    var authService = provider.GetRequiredService<BetfairAuthService>();
+    var settings = provider.GetRequiredService<IOptions<EndpointSettings>>();
+    return new GreyhoundMarketApiService(baseService, logger, httpClient, authService, settings);
+});
 //builder.Services.AddScoped<MarketBackgroundWorker>();
 
 // Register Stream API services
@@ -100,6 +120,8 @@ builder.Services.AddSingleton<HorseRacingAutomationService>();
 //builder.Services.AddHostedService<BetfairAutomationService>();
 builder.Services.AddHostedService<MarketBackgroundWorker>();
 builder.Services.AddHostedService<HorseRacingStartupService>();
+builder.Services.AddHostedService<GreyhoundStartupService>();
+builder.Services.AddHostedService<GreyhoundBackgroundWorker>();
 //builder.Services.AddHostedService<StreamApiBackgroundWorker>();
 //builder.Services.AddHostedService<AutomatedMarketSubscriptionService>();
 

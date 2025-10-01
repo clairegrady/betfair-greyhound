@@ -31,7 +31,7 @@ namespace Betfair.Services
                 
                 if (marketBookResponse?.Result != null)
                 {
-                    _logger.LogInformation("Successfully retrieved {Count} settled markets", marketBookResponse.Result.Count());
+                    _logger.LogWarning("Successfully retrieved {Count} settled markets", marketBookResponse.Result.Count());
                     return marketBookResponse.Result.ToList();
                 }
                 

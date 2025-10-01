@@ -5,6 +5,7 @@ using Betfair.Models.Event;
 using Betfair.Models.Market;
 using Betfair.Services.Account;
 using Betfair.Services.HistoricalData;
+using Betfair.Services.Interfaces;
 
 namespace Betfair.Services;
 
@@ -12,85 +13,87 @@ public class GreyhoundStartupService : BackgroundService
 {
     private readonly GreyhoundAutomationService _greyhoundAutomationService;
     private readonly EventAutomationService _eventAutomationService;
-    private readonly PlaceOrderService _placeOrderService;
+    private readonly IPlaceOrderService _placeOrderService;
     private readonly AccountService _accountService;
     private readonly HistoricalDataService _historicalDataService;
+    private readonly ILogger<GreyhoundStartupService> _logger;
+    
     public GreyhoundStartupService(
         GreyhoundAutomationService greyhoundAutomationService,
         EventAutomationService eventAutomationService,
-        PlaceOrderService placeOrderService,
+        IPlaceOrderService placeOrderService,
         AccountService accountService, 
-        HistoricalDataService historicalDataService) 
+        HistoricalDataService historicalDataService,
+        ILogger<GreyhoundStartupService> logger) 
     {
         _greyhoundAutomationService = greyhoundAutomationService;
         _eventAutomationService = eventAutomationService;
         _placeOrderService = placeOrderService;
         _accountService = accountService;
         _historicalDataService = historicalDataService;
+        _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-            var request = new HistoricalDataRequest(
-                sport: "Soccer", 
-                plan: "Basic Plan", 
-                fromDay: 1, fromMonth: 11, fromYear: 2024,
-                toDay: 1, toMonth: 12, toYear: 2024,
-                marketTypes: new List<string> { "WIN", "LOSS" }, 
-                countries: new List<string> { "AU" },
-                fileTypes: new List<string> { "E" }
-            );
+        _logger.LogInformation("GreyhoundStartupService started at {Time}", DateTime.Now);
         
         while (!stoppingToken.IsCancellationRequested)
         {
-            
-            var eventList = await _eventAutomationService.FetchAndStoreListOfEventsAsync(new List<string> {"4339"});
-            var auEventList = eventList.Where(e => e.Event.CountryCode == "AU").ToList();
-
-            var eventString = ConvertEventListToStrings(auEventList);
-            var marketCatalogues = await _greyhoundAutomationService.ProcessGreyhoundMarketCataloguesAsync(eventString.First());
-
-            foreach (var ev in eventString)
+            try
             {
-                var result = await _greyhoundAutomationService.ProcessGreyhoundMarketCataloguesAsync(ev);
-                marketCatalogues.AddRange(result);
+                // Fetch Australian greyhound events first
+                var eventList = await _eventAutomationService.FetchAndStoreListOfEventsAsync(new List<string> {"4339"});
+                var auEventList = eventList.Where(e => e.Event.CountryCode == "AU").ToList();
+                
+                _logger.LogInformation("Found {Count} Australian greyhound events", auEventList.Count);
+
+                if (auEventList.Any())
+                {
+                    var eventStrings = ConvertEventListToStrings(auEventList);
+                    var marketCatalogues = new List<MarketCatalogue>();
+                    
+                    // Process market catalogues for each event
+                    foreach (var eventId in eventStrings)
+                    {
+                        var catalogues = await _greyhoundAutomationService.ProcessGreyhoundMarketCataloguesAsync(targetEventId: eventId);
+                        marketCatalogues.AddRange(catalogues);
+                    }
+                    
+                    if (marketCatalogues.Any())
+                    {
+                        var marketIds = marketCatalogues.Select(mc => mc.MarketId).ToList();
+                        _logger.LogInformation("Found {Count} greyhound markets to process", marketIds.Count);
+                        
+                        // Process market books for these markets
+                        await _greyhoundAutomationService.ProcessGreyhoundMarketBooksAsync(marketIds);
+                        
+                        _logger.LogInformation("Processed {Count} greyhound market books", marketIds.Count);
+                    }
+                    else
+                    {
+                        _logger.LogInformation("No greyhound market catalogues found");
+                    }
+                }
+                else
+                {
+                    _logger.LogInformation("No Australian greyhound events found");
+                }
+                
+                // Wait before next iteration
+                await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
             }
-
-            var marketIds = marketCatalogues
-                .Select(market => market.MarketId)  
-                .ToList();
-            await _greyhoundAutomationService.ProcessGreyhoundMarketBooksAsync(marketIds);
-            var dataPackageList = await _historicalDataService.ListDataPackagesAsync();
-            var filteredCollectionOptions = await _historicalDataService.GetCollectionOptionsAsync(request.Sport, request.Plan, request.FromDay, request.FromMonth, request.FromYear, request.ToDay, request.ToMonth, request.ToYear, request.MarketTypes, request.Countries, request.FileTypes);
-            
-            //Console.WriteLine($"Data Package List: {dataPackageList}");
-            var filteredAdvDataSizeOptions = await _historicalDataService.GetDataSizeAsync(request);
-            //Console.WriteLine($"Filtered Collection Options: {filteredCollectionOptions}");
-
-            //Console.WriteLine($"Filtered Adv Data Size Options: {filteredAdvDataSizeOptions}");
-            var accountFundsJson = await _accountService.GetAccountFundsAsync();
-            DisplayHandler.DisplayAccountData(accountFundsJson); 
-            
-            //await _databaseService.DisplayMarketBooks(currentTennisMarketIds);
-
-            //await _orderService.PlaceOrdersAsync("1.237512511", "10109527", 1.23, 1.00, "BACK");
-            
-            // var instructions = new List<CancelInstruction>
-            // {
-            //     new CancelInstruction { betId = "372606848835" } // Provide the betId to cancel a specific bet
-            // };
-            // await _orderService.CancelOrderAsync("1.237598344", instructions);
-            
-            // Wait for 10 minutes before the next request
-            await Task.Delay(TimeSpan.FromSeconds(120), stoppingToken);
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in GreyhoundStartupService");
+                await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
+            }
         }
     }
-    
+
     public List<string> ConvertEventListToStrings(List<EventListResult> eventList)
     {
-        //return eventList.Select(e => $"{e.Event.Name} ({e.Event.Id})").ToList();
         return eventList.Select(e => $"{e.Event.Id}").ToList();
     }
-
 }
 

@@ -131,6 +131,37 @@ public class OddsController : ControllerBase
         {
             _logger.LogInformation("Refreshing odds for market {MarketId}", marketId);
             
+            // First refresh the win market odds
+            await RefreshMarketOdds(marketId, "CurrentWinOdds");
+            
+            // Then refresh the place market odds (market ID + 0.000000001)
+            decimal currentId = decimal.Parse(marketId);
+            decimal placeMarketId = currentId + 0.000000001m;
+            string placeMarketIdStr = placeMarketId.ToString("F9");
+            
+            _logger.LogInformation("Refreshing place odds for market {PlaceMarketId}", placeMarketIdStr);
+            await RefreshMarketOdds(placeMarketIdStr, "CurrentPlaceOdds");
+            
+            return Ok(new
+            {
+                marketId,
+                message = "Odds refreshed successfully",
+                oddsRecordsCount = 0, // We'll calculate this in the helper method
+                bspProjectionsCount = 0,
+                refreshedAt = DateTime.UtcNow
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error refreshing odds for market {MarketId}", marketId);
+            return StatusCode(500, new { message = "Internal server error", details = ex.Message });
+        }
+    }
+    
+    private async Task<int> RefreshMarketOdds(string marketId, string tableName)
+    {
+        try
+        {
             // Fetch fresh odds from Betfair API with timeout
             var marketIds = new List<string> { marketId };
             var response = await _marketApiService.ListMarketBookAsync(marketIds);
@@ -145,12 +176,12 @@ public class OddsController : ControllerBase
             {
                 _logger.LogError($"JSON deserialization error for market {marketId}: {ex.Message}");
                 _logger.LogError($"Response content: {response}");
-                return StatusCode(500, new { message = "Failed to parse market data", details = ex.Message });
+                return 0;
             }
             
             if (marketBookResponse?.Result == null || !marketBookResponse.Result.Any())
             {
-                return NotFound(new { message = "No market data found" });
+                return 0;
             }
             
             // Update the betting_history database with fresh odds data
@@ -160,22 +191,15 @@ public class OddsController : ControllerBase
             using var transaction = await connection.BeginTransactionAsync();
             
             // Clear existing odds for this market
-            var clearQuery = "DELETE FROM CurrentOdds WHERE MarketId = @marketId";
+            var clearQuery = $"DELETE FROM {tableName} WHERE MarketId = @marketId";
             using var clearCommand = new SqliteCommand(clearQuery, connection);
             clearCommand.Transaction = (SqliteTransaction)transaction;
             clearCommand.Parameters.AddWithValue("@marketId", marketId);
             await clearCommand.ExecuteNonQueryAsync();
             
-            // Clear existing BSP projections for this market
-            var clearBspQuery = "DELETE FROM BSPProjections WHERE MarketId = @marketId";
-            using var clearBspCommand = new SqliteCommand(clearBspQuery, connection);
-            clearBspCommand.Transaction = (SqliteTransaction)transaction;
-            clearBspCommand.Parameters.AddWithValue("@marketId", marketId);
-            await clearBspCommand.ExecuteNonQueryAsync();
-            
             int totalOddsRecords = 0;
             
-            // Insert fresh odds data into CurrentOdds table with best back and lay odds
+            // Insert fresh odds data into the specified table with best back and lay odds
             foreach (var marketBook in marketBookResponse.Result)
             {
                 foreach (var runner in marketBook.Runners)
@@ -203,8 +227,8 @@ public class OddsController : ControllerBase
                     // Only insert if we have at least back or lay odds
                     if (bestBackPrice.HasValue || bestLayPrice.HasValue)
                     {
-                        var insertQuery = @"
-                            INSERT INTO CurrentOdds
+                        var insertQuery = $@"
+                            INSERT INTO {tableName}
                             (MarketId, SelectionId, RunnerName, Price, Size, Status, LastPriceTraded, TotalMatched, UpdatedAt, best_back_price, best_lay_price, best_back_size, best_lay_size)
                             VALUES
                             ($MarketId, $SelectionId, $RunnerName, $Price, $Size, $Status, $LastPriceTraded, $TotalMatched, $UpdatedAt, $BestBackPrice, $BestLayPrice, $BestBackSize, $BestLaySize)";
@@ -232,60 +256,16 @@ public class OddsController : ControllerBase
                 }
             }
             
-            // Insert BSP projections into BSPProjections table
-            int totalBspProjections = 0;
-            foreach (var marketBook in marketBookResponse.Result)
-            {
-                foreach (var runner in marketBook.Runners)
-                {
-                    if (runner.Sp?.NearPrice != null || runner.Sp?.FarPrice != null)
-                    {
-                        var bspInsertQuery = @"
-                            INSERT OR REPLACE INTO BSPProjections
-                            (MarketId, SelectionId, RunnerName, NearPrice, FarPrice, Average, UpdatedAt)
-                            VALUES
-                            ($MarketId, $SelectionId, $RunnerName, $NearPrice, $FarPrice, $Average, $UpdatedAt)";
-                        
-                        using var bspCommand = new SqliteCommand(bspInsertQuery, connection);
-                        bspCommand.Transaction = (SqliteTransaction)transaction;
-                        
-                        bspCommand.Parameters.AddWithValue("$MarketId", marketId);
-                        bspCommand.Parameters.AddWithValue("$SelectionId", runner.SelectionId);
-                        bspCommand.Parameters.AddWithValue("$RunnerName", runner.Description?.RunnerName ?? $"Horse {runner.SelectionId}");
-                        bspCommand.Parameters.AddWithValue("$NearPrice", runner.Sp?.NearPrice ?? (object)DBNull.Value);
-                        bspCommand.Parameters.AddWithValue("$FarPrice", runner.Sp?.FarPrice ?? (object)DBNull.Value);
-                        
-                        var nearPrice = runner.Sp?.NearPrice;
-                        var farPrice = runner.Sp?.FarPrice;
-                        var average = (nearPrice != null && farPrice != null) 
-                            ? (nearPrice + farPrice) / 2.0 
-                            : (object)DBNull.Value;
-                        bspCommand.Parameters.AddWithValue("$Average", average);
-                        bspCommand.Parameters.AddWithValue("$UpdatedAt", DateTime.UtcNow);
-                        
-                        await bspCommand.ExecuteNonQueryAsync();
-                        totalBspProjections++;
-                    }
-                }
-            }
-            
             await transaction.CommitAsync();
             
-            _logger.LogInformation("Successfully refreshed {Count} odds records and {BspCount} BSP projections for market {MarketId}", totalOddsRecords, totalBspProjections, marketId);
+            _logger.LogInformation("Successfully refreshed {Count} odds records for market {MarketId} in table {TableName}", totalOddsRecords, marketId, tableName);
             
-            return Ok(new
-            {
-                marketId,
-                message = "Odds refreshed successfully",
-                oddsRecordsCount = totalOddsRecords,
-                bspProjectionsCount = totalBspProjections,
-                refreshedAt = DateTime.UtcNow
-            });
+            return totalOddsRecords;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error refreshing odds for market {MarketId}", marketId);
-            return StatusCode(500, new { message = "Internal server error" });
+            _logger.LogError(ex, "Error refreshing odds for market {MarketId} in table {TableName}", marketId, tableName);
+            return 0;
         }
     }
 

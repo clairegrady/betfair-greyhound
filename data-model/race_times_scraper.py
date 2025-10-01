@@ -36,35 +36,105 @@ class RaceTimesScraper:
         
         # Timezone mapping for venues
         self.venue_timezones = {
-            # Australia
+            # Australia - Victoria
+            'Bairnsdale': 'Australia/Melbourne',
             'Ballarat': 'Australia/Melbourne',
-            'Belmont': 'Australia/Perth', 
+            'Caulfield': 'Australia/Melbourne',
+            'Flemington': 'Australia/Melbourne',
+            'Geelong': 'Australia/Melbourne',
+            'Horsham': 'Australia/Melbourne',
+            'Moonee Valley': 'Australia/Melbourne',
+            'Mornington': 'Australia/Melbourne',
+            'Pakenham': 'Australia/Melbourne',
+            'Rosehill Gardens': 'Australia/Melbourne',
+            'Sale': 'Australia/Melbourne',
+            'Sandown Hillside': 'Australia/Melbourne',
+            'Sandown': 'Australia/Melbourne',
+            'Seymour': 'Australia/Melbourne',
+            'Swan Hill': 'Australia/Melbourne',
+            'Wangaratta': 'Australia/Melbourne',
+            
+            # Australia - NSW
+            'Canterbury Park': 'Australia/Sydney',
+            'Gosford': 'Australia/Sydney',
+            'Hawkesbury': 'Australia/Sydney',
+            'Lismore': 'Australia/Sydney',
+            'Moree': 'Australia/Sydney',
+            'Moruya': 'Australia/Sydney',
+            'Mudgee': 'Australia/Sydney',
+            'Murwillumbah': 'Australia/Sydney',
+            'Muswellbrook': 'Australia/Sydney',
+            'Narromine': 'Australia/Sydney',
+            'Newcastle (Broadmeadow)': 'Australia/Sydney',
+            'Nowra': 'Australia/Sydney',
+            'Parkes': 'Australia/Sydney',
+            'Port Macquarie': 'Australia/Sydney',
+            'Queanbeyan': 'Australia/Sydney',
+            'Randwick': 'Australia/Sydney',
+            'Rosehill': 'Australia/Sydney',
+            'Sapphire Coast': 'Australia/Sydney',
+            'Scone': 'Australia/Sydney',
+            'Tamworth': 'Australia/Sydney',
+            'Taree': 'Australia/Sydney',
+            'Wagga': 'Australia/Sydney',
+            'Warwick Farm': 'Australia/Sydney',
+            
+            # Australia - QLD
+            'Beaudesert': 'Australia/Brisbane',
+            'Doomben': 'Australia/Brisbane',
+            'Eagle Farm': 'Australia/Brisbane',
+            'Gold Coast': 'Australia/Brisbane',
+            'Gympie': 'Australia/Brisbane',
+            'Ipswich': 'Australia/Brisbane',
+            'Rockhampton': 'Australia/Brisbane',
+            'Sunshine Coast': 'Australia/Brisbane',
+            'Toowoomba': 'Australia/Brisbane',
+            'Townsville': 'Australia/Brisbane',
+            'Warwick': 'Australia/Brisbane',
+            
+            # Australia - SA
+            'Balaklava': 'Australia/Adelaide',
+            'Morphettville': 'Australia/Adelaide',
+            'Oakbank': 'Australia/Adelaide',
+            'Strathalbyn': 'Australia/Adelaide',
+            
+            # Australia - WA
+            'Ascot': 'Australia/Perth',
+            'Belmont': 'Australia/Perth',
+            'Broome': 'Australia/Perth',
+            'Bunbury': 'Australia/Perth',
+            'Geraldton': 'Australia/Perth',
+            'Mt Barker': 'Australia/Perth',
+            'Narrogin': 'Australia/Perth',
+            'Pinjarra Park': 'Australia/Perth',
+            
+            # Australia - TAS
+            'Hobart': 'Australia/Hobart',
+            
+            # Australia - ACT
+            'Canberra': 'Australia/Sydney',
+            
+            # Australia - NT
+            'Alice Springs': 'Australia/Darwin',
+            'Darwin': 'Australia/Darwin',
+            
+            # Additional existing venues (keeping for compatibility)
             'Benalla': 'Australia/Melbourne',
             'Bowraville': 'Australia/Sydney',
-            'Canberra': 'Australia/Sydney',
-            'Caulfield': 'Australia/Melbourne',
             'Coleraine': 'Australia/Melbourne',
             'Dalby': 'Australia/Brisbane',
-            'Darwin': 'Australia/Darwin',
-            'Eagle Farm': 'Australia/Brisbane',
             'Echuca': 'Australia/Melbourne',
             'Ellerslie': 'Australia/Sydney',
             'Ewan': 'Australia/Brisbane',
             'Gladstone': 'Australia/Brisbane',
-            'Gold Coast': 'Australia/Brisbane',
-            'Gympie': 'Australia/Brisbane',
-            'Lismore': 'Australia/Sydney',
-            'Moonee Valley': 'Australia/Melbourne',
-            'Morphettville Parks': 'Australia/Adelaide',
             'Mount Magnet': 'Australia/Perth',
             'Morven': 'Australia/Brisbane',
             'Pooncarie': 'Australia/Sydney',
-            'Randwick': 'Australia/Sydney',
-            'Scone': 'Australia/Sydney',
-            'Sunshine Coast': 'Australia/Brisbane',
-            'Townsville': 'Australia/Brisbane',
             'Wagga Riverside': 'Australia/Sydney',
             'Winton': 'Australia/Brisbane',
+            'Devonport Synthetic': 'Australia/Hobart',
+            'Dubbo': 'Australia/Sydney',
+            'Toodyay': 'Australia/Perth',
             
             # UK/Ireland
             'Ayr': 'Europe/London',
@@ -110,6 +180,54 @@ class RaceTimesScraper:
         
         self._create_race_times_table()
     
+    def _normalize_venue_name(self, venue):
+        """Normalize venue names to match Betfair naming conventions"""
+        venue_normalizations = {
+            'Sandown Hillside': 'Sandown',
+            'Rosehill Gardens': 'Rosehill',
+            'Sandown Hillside Racecourse': 'Sandown',
+            'Rosehill Gardens Racecourse': 'Rosehill',
+            'Moonee Valley Racecourse': 'Moonee Valley',
+            'Flemington Racecourse': 'Flemington',
+            'Caulfield Racecourse': 'Caulfield',
+            'Randwick Racecourse': 'Randwick',
+            'Warwick Farm Racecourse': 'Warwick Farm',
+            'Canterbury Park Racecourse': 'Canterbury Park',
+            'Hawkesbury Racecourse': 'Hawkesbury',
+            'Gosford Racecourse': 'Gosford',
+            'Newcastle Racecourse': 'Newcastle',
+            'Wyong Racecourse': 'Wyong',
+            'Kembla Grange Racecourse': 'Kembla Grange',
+            'Wagga Wagga Racecourse': 'Wagga',
+            'Albury Racecourse': 'Albury',
+            'Grafton Racecourse': 'Grafton',
+            'Lismore Racecourse': 'Lismore',
+            'Murwillumbah Racecourse': 'Murwillumbah',
+            'Ballina Racecourse': 'Ballina',
+            'Coffs Harbour Racecourse': 'Coffs Harbour',
+            'Port Macquarie Racecourse': 'Port Macquarie',
+            'Taree Racecourse': 'Taree',
+            'Tamworth Racecourse': 'Tamworth',
+            'Scone Racecourse': 'Scone',
+            'Muswellbrook Racecourse': 'Muswellbrook',
+            'Mudgee Racecourse': 'Mudgee',
+            'Bathurst Racecourse': 'Bathurst',
+            'Orange Racecourse': 'Orange',
+            'Dubbo Racecourse': 'Dubbo',
+            'Narromine Racecourse': 'Narromine',
+            'Parkes Racecourse': 'Parkes',
+            'Forbes Racecourse': 'Forbes',
+            'Cowra Racecourse': 'Cowra',
+            'Young Racecourse': 'Young',
+            'Gundagai Racecourse': 'Gundagai',
+            'Tumut Racecourse': 'Tumut',
+            'Cootamundra Racecourse': 'Cootamundra',
+            'Harden Racecourse': 'Harden'
+        }
+        
+        # Return normalized name if found, otherwise return original
+        return venue_normalizations.get(venue, venue)
+
     def _get_country_from_venue(self, venue):
         """Determine country from venue name based on timezone"""
         timezone = self.venue_timezones.get(venue, 'UTC')
@@ -187,22 +305,25 @@ class RaceTimesScraper:
         saved_count = 0
         for race in races:
             try:
+                # Normalize venue name to match Betfair conventions
+                normalized_venue = self._normalize_venue_name(race['venue'])
+                
                 # Convert to UTC
                 utc_time, utc_date, timezone = self.convert_to_utc(
-                    race['venue'], 
+                    normalized_venue, 
                     date_str, 
                     race['race_time_24h']
                 )
                 
                 # Get country for this venue
-                country = self._get_country_from_venue(race['venue'])
+                country = self._get_country_from_venue(normalized_venue)
                 
                 cursor.execute("""
                     INSERT OR REPLACE INTO race_times 
                     (venue, race_number, race_time, race_time_utc, race_date, timezone, country, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 """, (
-                    race['venue'], 
+                    normalized_venue,  # Use normalized venue name
                     race['race_number'], 
                     race['race_time_24h'],  # Original local time
                     utc_time,  # UTC time
@@ -220,7 +341,7 @@ class RaceTimesScraper:
     
     def scrape_race_times(self, date_str: str = None):
         """
-        Scrape race times for a specific date
+        Scrape race times for a specific date from both horse racing and harness racing pages
         
         Args:
             date_str: Date in YYYY-MM-DD format, defaults to today
