@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Betfair.Models;
 
@@ -10,6 +11,7 @@ namespace Betfair.Services
         Task DisconnectAsync();
         Task<bool> AuthenticateAsync(string appKey, string sessionToken);
         Task SubscribeToMarketAsync(string marketId, string[] marketFilter = null);
+        Task SubscribeToMarketsAsync(List<string> eventTypeIds = null, List<string> marketTypes = null, List<string> countryCodes = null, TimeSpan? timeWindow = null);
         Task SubscribeToOrdersAsync();
         Task UnsubscribeFromMarketAsync(string marketId);
         Task SendHeartbeatAsync();
@@ -28,6 +30,21 @@ namespace Betfair.Services
         public string ChangeType { get; set; }
         public object MarketData { get; set; }
         public DateTime Timestamp { get; set; }
+        public List<StreamRunnerData> Runners { get; set; }
+    }
+    
+    public class StreamRunnerData
+    {
+        public long SelectionId { get; set; }
+        public double? LastTradedPrice { get; set; }
+        public List<StreamPriceSize> BestAvailableToBack { get; set; }
+        public List<StreamPriceSize> BestAvailableToLay { get; set; }
+    }
+    
+    public class StreamPriceSize
+    {
+        public double Price { get; set; }
+        public double Size { get; set; }
     }
 
     public class OrderChangeEventArgs : EventArgs

@@ -136,6 +136,16 @@ namespace Betfair.AutomatedServices
 
             // Subscribe to orders
             await _streamApiService.SubscribeToOrdersAsync();
+            
+            // Subscribe to PLACE markets for paper trading (15-20 mins before race start)
+            _logger.LogWarning("📊 Subscribing to PLACE markets for upcoming horse races...");
+            await _streamApiService.SubscribeToMarketsAsync(
+                eventTypeIds: new List<string> { "7" }, // Horse Racing
+                marketTypes: new List<string> { "PLACE" }, // PLACE markets for paper trading
+                countryCodes: new List<string> { "AU" },
+                timeWindow: TimeSpan.FromMinutes(20) // Next 20 minutes
+            );
+            _logger.LogWarning("📊 PLACE market subscription sent successfully");
 
             // Start heartbeat timer
             _heartbeatTimer = new Timer(SendHeartbeat, null, 
@@ -147,12 +157,36 @@ namespace Betfair.AutomatedServices
 
         private async Task MonitorStreamConnectionAsync(CancellationToken stoppingToken)
         {
+            var subscriptionRefreshInterval = TimeSpan.FromMinutes(5); // Refresh subscriptions every 5 minutes
+            var lastSubscriptionRefresh = DateTime.UtcNow;
+            
             while (!stoppingToken.IsCancellationRequested)
             {
                 if (!_streamApiService.IsConnected || !_streamApiService.IsAuthenticated)
                 {
                     _logger.LogWarning("Stream API connection lost or not authenticated, attempting to reconnect...");
                     await ReconnectAsync();
+                }
+
+                // Refresh market subscriptions periodically to capture new upcoming races
+                if (DateTime.UtcNow - lastSubscriptionRefresh >= subscriptionRefreshInterval)
+                {
+                    try
+                    {
+                        _logger.LogInformation("🔄 Refreshing PLACE market subscriptions for upcoming races...");
+                        await _streamApiService.SubscribeToMarketsAsync(
+                            eventTypeIds: new List<string> { "7" }, // Horse Racing
+                            marketTypes: new List<string> { "PLACE" },
+                            countryCodes: new List<string> { "AU" },
+                            timeWindow: TimeSpan.FromMinutes(20) // Next 20 minutes
+                        );
+                        lastSubscriptionRefresh = DateTime.UtcNow;
+                        _logger.LogInformation("✅ Market subscriptions refreshed successfully");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error refreshing market subscriptions");
+                    }
                 }
 
                 await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
@@ -215,7 +249,18 @@ namespace Betfair.AutomatedServices
 
         private void OnMarketChanged(object sender, MarketChangeEventArgs e)
         {
-            _logger.LogInformation($"Market change received for {e.MarketId}: {e.ChangeType}");
+            _logger.LogWarning($"🎯 MARKET CHANGE: MarketId={e.MarketId}, ChangeType={e.ChangeType}");
+            
+            // Log detailed market data for testing
+            if (e.Runners != null && e.Runners.Any())
+            {
+                foreach (var runner in e.Runners.Take(3)) // Log first 3 runners
+                {
+                    _logger.LogWarning($"  Runner {runner.SelectionId}: LTP={runner.LastTradedPrice}, " +
+                        $"BestBack={runner.BestAvailableToBack?.FirstOrDefault()?.Price}, " +
+                        $"BestLay={runner.BestAvailableToLay?.FirstOrDefault()?.Price}");
+                }
+            }
             
             // Process market changes here
             // You can update your database with real-time market data

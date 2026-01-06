@@ -136,6 +136,68 @@ public class MarketApiService : IMarketApiService
         var result = await response.Content.ReadAsStringAsync();
         return result;
     }
+    /// <summary>
+    /// Fetch NCAA Basketball markets from Betfair
+    /// Event Type ID 7522 = Basketball (includes NCAA)
+    /// </summary>
+    public async Task<string> ListBasketballMarketCatalogueAsync(string? competitionId = null, string? eventId = null)
+    {
+        try
+        {
+            _sessionToken = await _authService.GetSessionTokenAsync();
+
+            var now = DateTime.UtcNow;
+            var yesterday = now.AddDays(-1);
+            var nextWeek = now.AddDays(7);
+
+            var filter = new
+            {
+                // Basketball Event Type ID
+                eventTypeIds = new[] { "7522" },
+                competitionIds = competitionId != null ? new[] { competitionId } : null,
+                eventIds = eventId != null ? new[] { eventId } : null,
+                // Basketball markets: Match Odds (Moneyline), Handicap, Total Points
+                marketTypeCodes = new[] { "MATCH_ODDS", "HANDICAP", "TOTAL_POINTS" },
+                // Include in-play and pre-match markets
+                marketStatuses = new[] { "OPEN", "ACTIVE", "SUSPENDED" },
+                // Fetch yesterday (for live games) to next 7 days
+                marketStartTime = new { from = yesterday, to = nextWeek }
+            };
+
+            var requestBody = new
+            {
+                jsonrpc = "2.0",
+                method = "SportsAPING/v1.0/listMarketCatalogue",
+                @params = new
+                {
+                    filter = filter,
+                    maxResults = 200, // NCAA has many games per day
+                    marketProjection = new[] { "COMPETITION", "EVENT", "EVENT_TYPE", "RUNNER_DESCRIPTION", "RUNNER_METADATA", "MARKET_START_TIME" }
+                },
+                id = 1
+            };
+
+            _httpClient.DefaultRequestHeaders.Remove("X-Authentication");
+            _httpClient.DefaultRequestHeaders.Add("X-Authentication", _sessionToken);
+
+            var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
+            var response = await _httpClient.PostAsync(_settings.ExchangeEndpoint, content);
+            response.EnsureSuccessStatusCode();
+
+            var jsonResponse = await response.Content.ReadAsStringAsync();
+
+            Console.WriteLine($"🏀 Basketball - Fetched markets from yesterday to next week");
+            Console.WriteLine($"🏀 Basketball - Response length: {jsonResponse?.Length ?? 0} chars");
+
+            return jsonResponse;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Basketball - Error fetching markets: {ex.Message}");
+            throw;
+        }
+    }
+
     public async Task<string> ListHorseRacingMarketCatalogueAsync(string? eventTypeId = null, string? eventId = null, DateTime? openDate = null)
     {
         try
@@ -150,17 +212,20 @@ public class MarketApiService : IMarketApiService
                 _timeWindowRotation = 0;
             }
 
-            // Use rotating time windows for horse racing as well
-            var (fromTime, toTime) = GetRotatingTimeWindow();
+            // MODIFIED: Fetch yesterday's races too (to get settled results) + today's races
+            var now = DateTime.UtcNow;
+            var yesterday = now.AddDays(-1);
+            var tomorrow = now.AddDays(1);
 
             var filter = new
             {
                 eventTypeIds = eventTypeId != null ? new[] { eventTypeId } : null,
                 eventIds = eventId != null ? new[] { eventId } : null,
                 marketTypeCodes = new[] { "WIN", "PLACE" },
-                marketStatuses = new[] { "OPEN", "ACTIVE", "SUSPENDED" },
-                // Use rotating time windows instead of fixed 7-day range
-                marketStartTime = new { from = fromTime, to = toTime },
+                // MODIFIED: Include CLOSED markets (settled races) + active markets
+                marketStatuses = new[] { "OPEN", "ACTIVE", "SUSPENDED", "CLOSED" },
+                // MODIFIED: Fetch from yesterday to capture settled results
+                marketStartTime = new { from = yesterday, to = tomorrow },
                 //marketCountries = new[] { "AU", "NZ" } // Include both AU and NZ
             };
 
@@ -189,10 +254,7 @@ public class MarketApiService : IMarketApiService
             // Track fetched markets for horse racing too
             await TrackFetchedMarkets(jsonResponse);
 
-            // Increment rotation for next call
-            _timeWindowRotation = (_timeWindowRotation + 1) % 4;
-
-            Console.WriteLine($"Horse Racing - Fetched markets for time window {_timeWindowRotation}: {fromTime:yyyy-MM-dd HH:mm} to {toTime:yyyy-MM-dd HH:mm}");
+            Console.WriteLine($"Horse Racing - Fetched markets from yesterday to tomorrow (including CLOSED markets for results)");
             Console.WriteLine($"Horse Racing - Total unique markets tracked: {FetchedMarketIds.Count}");
 
             return jsonResponse;
@@ -317,5 +379,6 @@ public interface IMarketApiService
     Task<string> GetMarketProfitAndLossAsync(List<string> marketIds);
     Task ProcessAndStoreMarketProfitAndLoss(List<string> marketIds);
     Task<string> ListHorseRacingMarketCatalogueAsync(string? eventTypeId = null, string? eventId = null, DateTime? openDate = null);
+    Task<string> ListBasketballMarketCatalogueAsync(string? competitionId = null, string? eventId = null);
     Task<List<string>> GetUnprocessedMarketIds(List<string> allMarketIds);
 }

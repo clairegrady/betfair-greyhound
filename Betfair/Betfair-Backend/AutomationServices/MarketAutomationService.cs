@@ -258,9 +258,12 @@ public class MarketAutomationService
         Console.WriteLine($"Markets scheduled for today or tomorrow: {todayAndTomorrowEvents.Count}");
 
         // Modified filter to include both today and tomorrow
+        // Include both "RX" markets (WIN) and "To Be Placed" markets (PLACE)
         filteredMarketDetails = marketCatalogues
             .Where(catalogue => (string.IsNullOrEmpty(eventId) || catalogue.Event.Id.Equals(eventId, StringComparison.OrdinalIgnoreCase))
-                                && Regex.IsMatch(catalogue.MarketName, @"^R\d{1,2}")
+                                && (Regex.IsMatch(catalogue.MarketName, @"^R\d{1,2}") || 
+                                    catalogue.MarketName.Contains("To Be Placed") || 
+                                    catalogue.MarketName.Contains("TBP"))
                                 && catalogue.Event.OpenDate.HasValue
                                 && (catalogue.Event.OpenDate.Value.ToLocalTime().Date == today
                                     || catalogue.Event.OpenDate.Value.ToLocalTime().Date == tomorrow))
@@ -363,6 +366,104 @@ public class MarketAutomationService
 
         //Console.WriteLine($"Filtered Market Ids: {filteredMarketIds.Count}");
         return filteredMarketIds;
+    }
+
+    /// <summary>
+    /// Process NCAA Basketball markets from Betfair
+    /// Uses the basketball-specific ListBasketballMarketCatalogueAsync endpoint
+    /// </summary>
+    public async Task<List<MarketDetails>> ProcessNcaaBasketballMarketCataloguesAsync(string competitionId = null, string eventId = null)
+    {
+        Console.WriteLine($"🏀 ProcessNcaaBasketballMarketCataloguesAsync called - CompetitionId: {competitionId}, EventId: {eventId}");
+        
+        var marketCatalogueJson = await _marketApiService.ListBasketballMarketCatalogueAsync(competitionId, eventId);
+        var marketCatalogueApiResponse = JsonSerializer.Deserialize<ApiResponse<MarketCatalogue>>(marketCatalogueJson);
+
+        var filteredMarketDetails = new List<MarketDetails>();
+
+        if (marketCatalogueApiResponse?.Result != null && marketCatalogueApiResponse.Result.Any())
+        {
+            Console.WriteLine($"🏀 Deserialized {marketCatalogueApiResponse.Result.Count()} NCAA Basketball markets");
+
+            var marketCatalogues = marketCatalogueApiResponse.Result
+                .Where(catalogue => catalogue.Event != null)
+                .Select(catalogue => new MarketCatalogue
+                {
+                    MarketId = catalogue.MarketId,
+                    MarketName = catalogue.MarketName,
+                    TotalMatched = catalogue.TotalMatched,
+                    EventType = catalogue.EventType != null
+                        ? new EventType
+                        {
+                            Id = catalogue.EventType.Id,
+                            Name = catalogue.EventType.Name
+                        }
+                        : null,
+
+                    Competition = catalogue.Competition != null
+                        ? new Competition
+                        {
+                            Id = catalogue.Competition.Id,
+                            Name = catalogue.Competition.Name
+                        }
+                        : null,
+
+                    Event = catalogue.Event != null
+                        ? new Event
+                        {
+                            Id = catalogue.Event.Id,
+                            Name = catalogue.Event.Name,
+                            CountryCode = catalogue.Event.CountryCode,
+                            Timezone = catalogue.Event.Timezone,
+                            OpenDate = catalogue.Event.OpenDate
+                        }
+                        : null,
+
+                    Runners = catalogue.Runners?.Select(runner => new RunnerDescription
+                    {
+                        SelectionId = runner.SelectionId,
+                        RunnerName = runner.RunnerName,
+                        Metadata = runner.Metadata
+                    }).ToList()
+                        ?? new List<RunnerDescription>()
+                })
+                .Where(catalogue => catalogue.Event != null)
+                .ToList();
+
+            Console.WriteLine($"🏀 Mapped {marketCatalogues.Count} NCAA Basketball market catalogues");
+
+            // Filter for Match Odds (Moneyline) markets - primary betting market for basketball
+            var matchOddsMarkets = marketCatalogues
+                .Where(catalogue => catalogue.MarketName.Contains("Match Odds", StringComparison.OrdinalIgnoreCase) ||
+                                    catalogue.MarketName.Contains("Moneyline", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            Console.WriteLine($"🏀 Found {matchOddsMarkets.Count} Match Odds / Moneyline markets");
+
+            // Create market details for return
+            filteredMarketDetails = matchOddsMarkets
+                .Select(catalogue => new MarketDetails
+                {
+                    MarketId = catalogue.MarketId,
+                    MarketName = catalogue.MarketName
+                })
+                .ToList();
+
+            // Insert all NCAA Basketball markets into database
+            if (marketCatalogues.Any())
+            {
+                Console.WriteLine($"🏀 Inserting {marketCatalogues.Count} NCAA Basketball markets into database");
+                await _listMarketCatalogueDb.InsertMarketsIntoDatabase(marketCatalogues);
+                Console.WriteLine($"✅ Inserted NCAA Basketball markets into database");
+            }
+        }
+        else
+        {
+            Console.WriteLine("🏀 No NCAA Basketball markets found or failed to deserialize");
+        }
+
+        Console.WriteLine($"🏀 Returning {filteredMarketDetails.Count} filtered NCAA Basketball market details");
+        return filteredMarketDetails;
     }
 
     public async Task FetchAndStoreMarketProfitAndLossAsync(List<string> marketIds)

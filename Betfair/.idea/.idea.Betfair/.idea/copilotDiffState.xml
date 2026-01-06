@@ -3,6 +3,20 @@
   <component name="CopilotDiffPersistence">
     <option name="pendingDiffs">
       <map>
+        <entry key="$PROJECT_DIR$/Betfair-Backend/Services/DatabaseLockManager.cs">
+          <value>
+            <PendingDiffInfo>
+              <option name="filePath" value="$PROJECT_DIR$/Betfair-Backend/Services/DatabaseLockManager.cs" />
+            </PendingDiffInfo>
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/Betfair-Backend/TestAuth.cs">
+          <value>
+            <PendingDiffInfo>
+              <option name="filePath" value="$PROJECT_DIR$/Betfair-Backend/TestAuth.cs" />
+            </PendingDiffInfo>
+          </value>
+        </entry>
         <entry key="$PROJECT_DIR$/Betfair/AutomatedServices/BetfairPlaceOrderBackgroundWorker.cs">
           <value>
             <PendingDiffInfo>

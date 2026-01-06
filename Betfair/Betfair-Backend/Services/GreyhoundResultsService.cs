@@ -1,4 +1,3 @@
-using Betfair.Services.Interfaces;
 using Betfair.Models.Market;
 using Betfair.Models.Runner;
 using Betfair.Models;
@@ -6,7 +5,7 @@ using System.Text.Json;
 
 namespace Betfair.Services;
 
-public class GreyhoundResultsService : IResultsService
+public class GreyhoundResultsService
 {
     private readonly IMarketApiService _marketApiService;
     private readonly ILogger<GreyhoundResultsService> _logger;

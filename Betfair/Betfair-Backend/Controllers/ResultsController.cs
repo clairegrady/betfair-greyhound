@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
-using Betfair.Services.Interfaces;
+using Betfair.Services;
 
-namespace Betfair.Betfair.Backend.Controllers
+namespace Betfair.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
@@ -17,32 +17,62 @@ namespace Betfair.Betfair.Backend.Controllers
         }
 
         [HttpPost("settled")]
-        public async Task<IActionResult> GetSettledMarkets([FromBody] List<string> marketIds)
+        public async Task<IActionResult> GetSettledMarkets([FromBody] SettledMarketsRequest request)
         {
             try
             {
-                if (marketIds == null || !marketIds.Any())
+                if (request?.MarketIds == null || !request.MarketIds.Any())
                 {
                     return BadRequest(new { message = "Market IDs are required" });
                 }
 
-                _logger.LogInformation("Fetching settled results for {Count} markets", marketIds.Count);
+                _logger.LogInformation("🏁 Fetching settled results for {Count} markets", request.MarketIds.Count);
                 
-                var settledMarkets = await _resultsService.GetSettledMarkets(marketIds);
+                var markets = await _resultsService.GetSettledMarketsAsync(request.MarketIds);
                 
                 return Ok(new
                 {
-                    marketIds = marketIds,
-                    settledMarkets = settledMarkets,
-                    count = settledMarkets.Count,
-                    fetchedAt = DateTime.UtcNow
+                    markets = markets,
+                    fetched_at = DateTime.UtcNow
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error fetching settled markets");
-                return StatusCode(500, new { message = "Internal server error", details = ex.Message });
+                _logger.LogError(ex, "❌ Error fetching settled markets");
+                return StatusCode(500, new { error = ex.Message });
             }
         }
+
+        [HttpPost("catalogue")]
+        public async Task<IActionResult> GetMarketCatalogue([FromBody] SettledMarketsRequest request)
+        {
+            try
+            {
+                if (request?.MarketIds == null || !request.MarketIds.Any())
+                {
+                    return BadRequest(new { message = "Market IDs are required" });
+                }
+
+                _logger.LogInformation("📋 Fetching market catalogue for {Count} markets", request.MarketIds.Count);
+                
+                var markets = await _resultsService.GetMarketCatalogueAsync(request.MarketIds);
+                
+                return Ok(new
+                {
+                    markets = markets,
+                    fetched_at = DateTime.UtcNow
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error fetching market catalogue");
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+    }
+
+    public class SettledMarketsRequest
+    {
+        public List<string> MarketIds { get; set; } = new();
     }
 }

@@ -5,7 +5,7 @@ using Betfair.Models.Event;
 using Betfair.Models.Market;
 using Betfair.Services.Account;
 using Betfair.Services.HistoricalData;
-using Betfair.Services.Interfaces;
+using Betfair.Services;
 
 namespace Betfair.AutomatedServices;
 public class GreyhoundBackgroundWorker : BackgroundService

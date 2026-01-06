@@ -159,6 +159,13 @@ public class GreyhoundMarketApiService : IMarketApiService
         return await ListMarketCatalogue(eventId: eventId);
     }
 
+    public async Task<string> ListBasketballMarketCatalogueAsync(string? competitionId = null, string? eventId = null)
+    {
+        // This method is not applicable for greyhounds - delegate to base service
+        _logger.LogInformation("Basketball market catalogue requested via GreyhoundMarketApiService - delegating to base service");
+        return await _baseMarketApiService.ListBasketballMarketCatalogueAsync(competitionId, eventId);
+    }
+
     public async Task<List<string>> GetUnprocessedMarketIds(List<string> allMarketIds)
     {
         try

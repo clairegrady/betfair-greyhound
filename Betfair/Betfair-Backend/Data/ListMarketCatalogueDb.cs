@@ -13,10 +13,26 @@ public class ListMarketCatalogueDb
     public async Task InsertMarketsIntoDatabase(List<MarketCatalogue> marketCatalogues)
     {
         Console.WriteLine("##################################################################");
-        using var connection = new SqliteConnection(_connectionString);
-        await connection.OpenAsync();
+        
+        // Retry logic for database lock errors
+        int maxRetries = 5;
+        int retryDelayMs = 100;
+        
+        for (int attempt = 0; attempt < maxRetries; attempt++)
+        {
+            try
+            {
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                
+                // Enable WAL mode for better concurrency
+                using (var walCommand = connection.CreateCommand())
+                {
+                    walCommand.CommandText = "PRAGMA journal_mode=WAL;";
+                    await walCommand.ExecuteNonQueryAsync();
+                }
 
-        foreach (var marketCatalogue in marketCatalogues)
+                foreach (var marketCatalogue in marketCatalogues)
         {
             //Console.WriteLine($"MarketId: {marketCatalogue.MarketId}, MarketName: {marketCatalogue.MarketName}");
 
@@ -60,7 +76,21 @@ public class ListMarketCatalogueDb
             command.Parameters.AddWithValue("$CompetitionName", marketCatalogue.Competition?.Name ?? (object)DBNull.Value);
 
             await command.ExecuteNonQueryAsync();
+                }
+                
+                // Success - break out of retry loop
+                return;
+            }
+            catch (SqliteException ex) when (ex.SqliteErrorCode == 5 && attempt < maxRetries - 1) // SQLite BUSY
+            {
+                Console.WriteLine($"⚠️ Database locked (attempt {attempt + 1}/{maxRetries}), retrying in {retryDelayMs}ms...");
+                await Task.Delay(retryDelayMs);
+                retryDelayMs *= 2; // Exponential backoff
+            }
         }
+        
+        // If we get here, all retries failed
+        throw new Exception("Failed to insert market catalogues after multiple retries due to database lock");
     }
 }
 

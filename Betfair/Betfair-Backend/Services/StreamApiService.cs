@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Data.Sqlite;
 using Betfair.Models;
 using Betfair.Settings;
@@ -73,7 +74,11 @@ namespace Betfair.Services
                 await _sslStream.AuthenticateAsClientAsync(host);
 
                 _streamReader = new StreamReader(_sslStream, Encoding.UTF8);
-                _streamWriter = new StreamWriter(_sslStream, Encoding.UTF8) { AutoFlush = true };
+                _streamWriter = new StreamWriter(_sslStream, Encoding.UTF8) 
+                { 
+                    AutoFlush = true,
+                    NewLine = "\r\n"  // Betfair Stream API requires CRLF line endings
+                };
 
                 _ = Task.Run(ReceiveMessagesAsync);
 
@@ -139,6 +144,58 @@ namespace Betfair.Services
             _logger.LogWarning($"Sending market subscription: {json}");
             await SendMessageAsync(message);
             _logger.LogInformation($"Subscribed to market {marketId} with BSP projections");
+        }
+
+        public async Task SubscribeToMarketsAsync(List<string> eventTypeIds = null, List<string> marketTypes = null, List<string> countryCodes = null, TimeSpan? timeWindow = null)
+        {
+            var marketFilter = new Dictionary<string, object>();
+            
+            if (eventTypeIds != null && eventTypeIds.Any())
+                marketFilter["eventTypeIds"] = eventTypeIds;
+            
+            if (marketTypes != null && marketTypes.Any())
+                marketFilter["marketTypes"] = marketTypes;
+            
+            if (countryCodes != null && countryCodes.Any())
+                marketFilter["countryCodes"] = countryCodes;
+            
+            // Add time window filter if specified
+            if (timeWindow.HasValue)
+            {
+                var now = DateTime.UtcNow;
+                marketFilter["marketStartTime"] = new
+                {
+                    from = now.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+                    to = now.Add(timeWindow.Value).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                };
+            }
+
+            var message = new
+            {
+                id = ++_messageId,
+                op = "marketSubscription",
+                marketFilter = marketFilter,
+                marketDataFilter = new
+                {
+                    fields = new[]
+                    {
+                        "SP_PROJECTED", // BSP Near and Far prices
+                        "EX_BEST_OFFERS_DISP",
+                        "EX_BEST_OFFERS",
+                        "EX_MARKET_DEF",
+                        "EX_LTP" // Last Traded Price
+                    },
+                    ladderLevels = 3
+                },
+                segmentationEnabled = true,
+                conflateMs = 0,
+                heartbeatMs = 5000
+            };
+
+            var json = JsonSerializer.Serialize(message);
+            _logger.LogWarning($"Sending market subscription with filters: {json}");
+            await SendMessageAsync(message);
+            _logger.LogInformation($"Subscribed to markets with filters: EventTypes={string.Join(",", eventTypeIds ?? new List<string>())}, MarketTypes={string.Join(",", marketTypes ?? new List<string>())}");
         }
 
         public async Task SubscribeToOrdersAsync()

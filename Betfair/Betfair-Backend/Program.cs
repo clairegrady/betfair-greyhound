@@ -2,7 +2,7 @@
 using Betfair.Services;
 using Betfair.AutomationServices;
 using Betfair.AutomatedServices;
-using Betfair.Services.Interfaces;
+using Betfair.Services;
 using Betfair.Handlers;
 using Betfair.Services.Account;
 using Betfair.Services.HistoricalData;
@@ -78,6 +78,14 @@ builder.Services.AddHttpClient<HistoricalDataService>((sp, client) =>
     return BetfairHttpClientFactory.CreateBetfairHandler(sp);
 });
 
+builder.Services.AddHttpClient<IResultsService, ResultsService>((sp, client) =>
+{
+    BetfairHttpClientFactory.ConfigureBetfairClient(client, sp);
+}).ConfigurePrimaryHttpMessageHandler(sp =>
+{
+    return BetfairHttpClientFactory.CreateBetfairHandler(sp);
+});
+
 // Register database services with the connection string
 builder.Services.AddSingleton(new CompetitionDb(connectionString));
 builder.Services.AddSingleton(new ListMarketCatalogueDb(connectionString));
@@ -85,52 +93,60 @@ builder.Services.AddSingleton(new MarketBookDb(connectionString));
 builder.Services.AddSingleton(new EventDb2(connectionString));
 builder.Services.AddSingleton(new MarketProfitAndLossDb(connectionString));
 builder.Services.AddSingleton(new HistoricalDataDb(connectionString));
+builder.Services.AddSingleton(new NcaaBasketballDb(connectionString));
 
 // Register scoped services
 builder.Services.AddScoped<CompetitionAutomationService>();
 builder.Services.AddScoped<MarketAutomationService>();
 builder.Services.AddScoped<EventAutomationService>();
-builder.Services.AddScoped<GreyhoundAutomationService>((provider) =>
-{
-    var greyhoundMarketApiService = provider.GetRequiredService<GreyhoundMarketApiService>();
-    var listMarketCatalogueDb = provider.GetRequiredService<ListMarketCatalogueDb>();
-    var marketBookDb = provider.GetRequiredService<MarketBookDb>();
-    var eventDb = provider.GetRequiredService<EventDb2>();
-    return new GreyhoundAutomationService(greyhoundMarketApiService, listMarketCatalogueDb, marketBookDb, eventDb);
-});
+// builder.Services.AddScoped<GreyhoundAutomationService>((provider) =>
+// {
+//     var greyhoundMarketApiService = provider.GetRequiredService<GreyhoundMarketApiService>();
+//     var listMarketCatalogueDb = provider.GetRequiredService<ListMarketCatalogueDb>();
+//     var marketBookDb = provider.GetRequiredService<MarketBookDb>();
+//     var eventDb = provider.GetRequiredService<EventDb2>();
+//     return new GreyhoundAutomationService(greyhoundMarketApiService, listMarketCatalogueDb, marketBookDb, eventDb);
+// });
 builder.Services.AddSingleton<HorseRacingAutomationService>();
 
 // Register greyhound services
-builder.Services.AddScoped<GreyhoundResultsService>();
-builder.Services.AddScoped<GreyhoundMarketApiService>((provider) =>
-{
-    var baseService = provider.GetRequiredService<IMarketApiService>();
-    var logger = provider.GetRequiredService<ILogger<GreyhoundMarketApiService>>();
-    var httpClient = provider.GetRequiredService<HttpClient>();
-    var authService = provider.GetRequiredService<BetfairAuthService>();
-    var settings = provider.GetRequiredService<IOptions<EndpointSettings>>();
-    return new GreyhoundMarketApiService(baseService, logger, httpClient, authService, settings);
-});
+// builder.Services.AddScoped<GreyhoundResultsService>();
+// builder.Services.AddScoped<GreyhoundMarketApiService>((provider) =>
+// {
+//     var baseService = provider.GetRequiredService<IMarketApiService>();
+//     var logger = provider.GetRequiredService<ILogger<GreyhoundMarketApiService>>();
+//     var httpClient = provider.GetRequiredService<HttpClient>();
+//     var authService = provider.GetRequiredService<BetfairAuthService>();
+//     var settings = provider.GetRequiredService<IOptions<EndpointSettings>>();
+//     return new GreyhoundMarketApiService(baseService, logger, httpClient, authService, settings);
+// });
 //builder.Services.AddScoped<MarketBackgroundWorker>();
 
 // Register Stream API services
-//builder.Services.AddSingleton<IStreamApiService, StreamApiService>();
-
-// Register hosted services
-//builder.Services.AddHostedService<BetfairAutomationService>();
-builder.Services.AddHostedService<MarketBackgroundWorker>();
-builder.Services.AddHostedService<HorseRacingStartupService>();
-builder.Services.AddHostedService<GreyhoundStartupService>();
-builder.Services.AddHostedService<GreyhoundBackgroundWorker>();
-//builder.Services.AddHostedService<StreamApiBackgroundWorker>();
-//builder.Services.AddHostedService<AutomatedMarketSubscriptionService>();
+builder.Services.AddSingleton<IStreamApiService, StreamApiService>();
+Console.WriteLine("✅ Registered StreamApiService");
 
 builder.Services.AddScoped<DatabaseService>(provider => new DatabaseService(connectionString));
 
 // Register ResultsService
 builder.Services.AddScoped<IResultsService, ResultsService>();
 
-// Add controllers
+// Register NCAA Basketball services
+builder.Services.AddScoped<INcaaBasketballService, NcaaBasketballService>();
+builder.Services.AddHttpClient<INcaaOddsService, NcaaOddsService>();
+
+// Register hosted services
+//builder.Services.AddHostedService<BetfairAutomationService>();
+builder.Services.AddHostedService<MarketBackgroundWorker>();
+Console.WriteLine("✅ Registered MarketBackgroundWorker");
+builder.Services.AddHostedService<HorseRacingStartupService>();
+Console.WriteLine("✅ Registered HorseRacingStartupService");
+builder.Services.AddHostedService<StreamApiBackgroundWorker>();
+Console.WriteLine("✅ Registered StreamApiBackgroundWorker");
+builder.Services.AddHostedService<NcaaBasketballBackgroundService>();
+Console.WriteLine("✅ Registered NcaaBasketballBackgroundService");
+builder.Services.AddHostedService<NcaaBasketballMarketWorker>();
+Console.WriteLine("✅ Registered NcaaBasketballMarketWorker");
 builder.Services.AddControllers();
 
 // Add Swagger
@@ -151,6 +167,40 @@ SQLitePCL.Batteries_V2.Init();
 SQLitePCL.raw.SetProvider(new SQLitePCL.SQLite3Provider_e_sqlite3());
 
 var app = builder.Build();
+
+// TEST: Verify NCAA Basketball service dependencies can be resolved
+try
+{
+    using var scope = app.Services.CreateScope();
+    var ncaaDb = scope.ServiceProvider.GetRequiredService<NcaaBasketballDb>();
+    var oddsService = scope.ServiceProvider.GetRequiredService<INcaaOddsService>();
+    Console.WriteLine("✅ NCAA Basketball dependencies resolved successfully");
+    
+    // Now try to actually instantiate the service
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<NcaaBasketballBackgroundService>>();
+    var serviceProvider = scope.ServiceProvider;
+    var ncaaService = new NcaaBasketballBackgroundService(logger, serviceProvider, ncaaDb);
+    Console.WriteLine("✅ NCAA Basketball service instantiated successfully");
+    
+    // List all registered hosted services
+    var hostedServices = app.Services.GetServices<Microsoft.Extensions.Hosting.IHostedService>();
+    Console.WriteLine($"📊 Total hosted services registered: {hostedServices.Count()}");
+    foreach (var service in hostedServices)
+    {
+        Console.WriteLine($"   - {service.GetType().Name}");
+    }
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"❌ FATAL: NCAA Basketball service failed:");
+    Console.WriteLine($"   Error: {ex.Message}");
+    Console.WriteLine($"   Type: {ex.GetType().Name}");
+    Console.WriteLine($"   Stack: {ex.StackTrace}");
+    if (ex.InnerException != null)
+    {
+        Console.WriteLine($"   Inner: {ex.InnerException.Message}");
+    }
+}
 
 // Ensure the application uses the specified port or logs an error if unavailable
 var port = Environment.GetEnvironmentVariable("PORT") ?? "5173";

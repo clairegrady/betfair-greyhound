@@ -25,6 +25,21 @@ public class MarketBookDb
     public MarketBookDb(string connectionString)
     {
         _connectionString = connectionString;
+        
+        // Enable WAL mode for better concurrency (allows multiple readers + 1 writer)
+        try
+        {
+            using var connection = new SqliteConnection(_connectionString);
+            connection.Open();
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "PRAGMA journal_mode=WAL;";
+            cmd.ExecuteNonQuery();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️ Could not enable WAL mode: {ex.Message}");
+        }
+        
         try
         {
             VerifyHorseMarketBookSchema();
@@ -205,107 +220,147 @@ public class MarketBookDb
             return;
         }
 
-        using var connection = new SqliteConnection(_connectionString);
-        await connection.OpenAsync();
-        Console.WriteLine($"🔗 Database connection opened for back/lay price insertion");
-
-        using var transaction = await connection.BeginTransactionAsync();
-
-        await DeleteExistingData(connection, new List<string> { "MarketBookBackPrices", "MarketBookLayPrices" });
-        await ResetAutoIncrementCounters(connection, new List<string> { "MarketBookBackPrices", "MarketBookLayPrices" });
-
-        int totalBackPrices = 0;
-        int totalLayPrices = 0;
-        int processedMarkets = 0;
-
-        try
+        // Retry logic for database lock errors
+        int maxRetries = 5;
+        int retryDelayMs = 100;
+        
+        for (int attempt = 0; attempt < maxRetries; attempt++)
         {
-            foreach (var marketBook in marketBooks)
+            SqliteTransaction? transaction = null;
+            try
             {
-                string marketId = marketBook.MarketId;
-                //Console.WriteLine($"💰 Processing market {marketId} with {marketBook.Runners?.Count ?? 0} runners for back/lay prices");
-                processedMarkets++;
-
-                foreach (var runner in marketBook.Runners)
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                Console.WriteLine($"🔗 Database connection opened for back/lay price insertion");
+                
+                // Enable WAL mode for better concurrency
+                using (var walCommand = connection.CreateCommand())
                 {
-                    //Console.WriteLine($"🏃 Processing runner {runner.SelectionId} with exchange data: {runner.Exchange != null}");
+                    walCommand.CommandText = "PRAGMA journal_mode=WAL;";
+                    await walCommand.ExecuteNonQueryAsync();
+                }
 
-                    if (runner.Exchange != null)
+                transaction = (SqliteTransaction)await connection.BeginTransactionAsync();
+
+                await DeleteExistingData(connection, new List<string> { "MarketBookBackPrices", "MarketBookLayPrices" });
+                await ResetAutoIncrementCounters(connection, new List<string> { "MarketBookBackPrices", "MarketBookLayPrices" });
+
+                int totalBackPrices = 0;
+                int totalLayPrices = 0;
+                int processedMarkets = 0;
+
+                foreach (var marketBook in marketBooks)
+                {
+                    string marketId = marketBook.MarketId;
+                    //Console.WriteLine($"💰 Processing market {marketId} with {marketBook.Runners?.Count ?? 0} runners for back/lay prices");
+                    processedMarkets++;
+
+                    foreach (var runner in marketBook.Runners)
                     {
-                        //Console.WriteLine($"📈 Runner {runner.SelectionId} has {runner.Exchange.AvailableToBack?.Count ?? 0} back prices and {runner.Exchange.AvailableToLay?.Count ?? 0} lay prices");
+                        //Console.WriteLine($"🏃 Processing runner {runner.SelectionId} with exchange data: {runner.Exchange != null}");
 
-                        foreach (var back in runner.Exchange.AvailableToBack)
+                        if (runner.Exchange != null)
                         {
-                            if (await IsDataExist(connection, "MarketBookBackPrices", marketId, runner.SelectionId, back.Price))
-                            {
-                                //Console.WriteLine($"⚠️ Skipping duplicate Back bet data for Runner {runner.SelectionId}: Price = {back.Price}");
-                                continue;
-                            }
+                            //Console.WriteLine($"📈 Runner {runner.SelectionId} has {runner.Exchange.AvailableToBack?.Count ?? 0} back prices and {runner.Exchange.AvailableToLay?.Count ?? 0} lay prices");
 
-                            using var priceCommand = connection.CreateCommand();
-                            priceCommand.CommandText = @"
+                            foreach (var back in runner.Exchange.AvailableToBack)
+                            {
+                                if (await IsDataExist(connection, "MarketBookBackPrices", marketId, runner.SelectionId, back.Price))
+                                {
+                                    //Console.WriteLine($"⚠️ Skipping duplicate Back bet data for Runner {runner.SelectionId}: Price = {back.Price}");
+                                    continue;
+                                }
+
+                                using var priceCommand = connection.CreateCommand();
+                                priceCommand.CommandText = @"
                                 INSERT INTO MarketBookBackPrices
                                 (MarketId, SelectionId, Price, Size, Status, LastPriceTraded, TotalMatched)
                                 VALUES
                                 ($MarketId, $SelectionId, $Price, $Size, $Status, $LastPriceTraded, $TotalMatched)";
 
-                            priceCommand.Parameters.AddWithValue("$MarketId", marketId ?? (object)DBNull.Value);
-                            priceCommand.Parameters.AddWithValue("$SelectionId", runner.SelectionId);
-                            priceCommand.Parameters.AddWithValue("$Price", (double)back.Price);
-                            priceCommand.Parameters.AddWithValue("$Size", (double)back.Size);
-                            priceCommand.Parameters.AddWithValue("$Status", runner.Status ?? (object)DBNull.Value);
-                            priceCommand.Parameters.AddWithValue("$LastPriceTraded", runner.LastPriceTraded ?? (object)DBNull.Value);
-                            priceCommand.Parameters.AddWithValue("$TotalMatched", runner.TotalMatched ?? (object)DBNull.Value);
+                                priceCommand.Parameters.AddWithValue("$MarketId", marketId ?? (object)DBNull.Value);
+                                priceCommand.Parameters.AddWithValue("$SelectionId", runner.SelectionId);
+                                priceCommand.Parameters.AddWithValue("$Price", (double)back.Price);
+                                priceCommand.Parameters.AddWithValue("$Size", (double)back.Size);
+                                priceCommand.Parameters.AddWithValue("$Status", runner.Status ?? (object)DBNull.Value);
+                                priceCommand.Parameters.AddWithValue("$LastPriceTraded", runner.LastPriceTraded ?? (object)DBNull.Value);
+                                priceCommand.Parameters.AddWithValue("$TotalMatched", runner.TotalMatched ?? (object)DBNull.Value);
 
-                            await priceCommand.ExecuteNonQueryAsync();
-                            totalBackPrices++;
-                            //Console.WriteLine($"✅ Inserted back price: Market={marketId}, Runner={runner.SelectionId}, Price={back.Price}, Size={back.Size}");
-                        }
-
-                        foreach (var lay in runner.Exchange.AvailableToLay)
-                        {
-                            if (await IsDataExist(connection, "MarketBookLayPrices", marketId, runner.SelectionId, lay.Price))
-                            {
-                                //Console.WriteLine($"⚠️ Skipping duplicate Lay bet data for Runner {runner.SelectionId}: Price = {lay.Price}");
-                                continue;
+                                await priceCommand.ExecuteNonQueryAsync();
+                                totalBackPrices++;
+                                //Console.WriteLine($"✅ Inserted back price: Market={marketId}, Runner={runner.SelectionId}, Price={back.Price}, Size={back.Size}");
                             }
 
-                            using var priceCommand = connection.CreateCommand();
-                            priceCommand.CommandText = @"
+                            foreach (var lay in runner.Exchange.AvailableToLay)
+                            {
+                                if (await IsDataExist(connection, "MarketBookLayPrices", marketId, runner.SelectionId, lay.Price))
+                                {
+                                    //Console.WriteLine($"⚠️ Skipping duplicate Lay bet data for Runner {runner.SelectionId}: Price = {lay.Price}");
+                                    continue;
+                                }
+
+                                using var priceCommand = connection.CreateCommand();
+                                priceCommand.CommandText = @"
                                 INSERT INTO MarketBookLayPrices
                                 (MarketId, SelectionId, Price, Size, Status, LastPriceTraded, TotalMatched)
                                 VALUES
                                 ($MarketId, $SelectionId, $Price, $Size, $Status, $LastPriceTraded, $TotalMatched)";
 
-                            priceCommand.Parameters.AddWithValue("$MarketId", marketId ?? (object)DBNull.Value);
-                            priceCommand.Parameters.AddWithValue("$SelectionId", runner.SelectionId);
-                            priceCommand.Parameters.AddWithValue("$Price", (double)lay.Price);
-                            priceCommand.Parameters.AddWithValue("$Size", (double)lay.Size);
-                            priceCommand.Parameters.AddWithValue("$Status", runner.Status ?? (object)DBNull.Value);
-                            priceCommand.Parameters.AddWithValue("$LastPriceTraded", runner.LastPriceTraded ?? (object)DBNull.Value);
-                            priceCommand.Parameters.AddWithValue("$TotalMatched", runner.TotalMatched ?? (object)DBNull.Value);
+                                priceCommand.Parameters.AddWithValue("$MarketId", marketId ?? (object)DBNull.Value);
+                                priceCommand.Parameters.AddWithValue("$SelectionId", runner.SelectionId);
+                                priceCommand.Parameters.AddWithValue("$Price", (double)lay.Price);
+                                priceCommand.Parameters.AddWithValue("$Size", (double)lay.Size);
+                                priceCommand.Parameters.AddWithValue("$Status", runner.Status ?? (object)DBNull.Value);
+                                priceCommand.Parameters.AddWithValue("$LastPriceTraded", runner.LastPriceTraded ?? (object)DBNull.Value);
+                                priceCommand.Parameters.AddWithValue("$TotalMatched", runner.TotalMatched ?? (object)DBNull.Value);
 
-                            await priceCommand.ExecuteNonQueryAsync();
-                            totalLayPrices++;
-                            //Console.WriteLine($"✅ Inserted lay price: Market={marketId}, Runner={runner.SelectionId}, Price={lay.Price}, Size={lay.Size}");
+                                await priceCommand.ExecuteNonQueryAsync();
+                                totalLayPrices++;
+                                //Console.WriteLine($"✅ Inserted lay price: Market={marketId}, Runner={runner.SelectionId}, Price={lay.Price}, Size={lay.Size}");
+                            }
+                        }
+                        else
+                        {
+                            //Console.WriteLine($"❌ Runner {runner.SelectionId} has no exchange data");
                         }
                     }
-                    else
-                    {
-                        //Console.WriteLine($"❌ Runner {runner.SelectionId} has no exchange data");
-                    }
                 }
+                
+                await transaction.CommitAsync();
+                transaction.Dispose();
+                //Console.WriteLine($"🎉 Market book back/lay prices inserted successfully!");
+                //Console.WriteLine($"📊 Total processed: {processedMarkets} markets, {totalBackPrices} back prices, {totalLayPrices} lay prices");
+                Console.WriteLine($"✅ InsertMarketBooksIntoDatabase completed - {marketBooks.Count} market books processed");
+                
+                // Success - break out of retry loop
+                return;
             }
-            await transaction.CommitAsync();
-            //Console.WriteLine($"🎉 Market book back/lay prices inserted successfully!");
-            //Console.WriteLine($"📊 Total processed: {processedMarkets} markets, {totalBackPrices} back prices, {totalLayPrices} lay prices");
+            catch (SqliteException ex) when (ex.SqliteErrorCode == 5 && attempt < maxRetries - 1) // SQLite BUSY
+            {
+                if (transaction != null)
+                {
+                    await transaction.RollbackAsync();
+                    transaction.Dispose();
+                }
+                Console.WriteLine($"⚠️ Database locked (attempt {attempt + 1}/{maxRetries}), retrying in {retryDelayMs}ms...");
+                await Task.Delay(retryDelayMs);
+                retryDelayMs *= 2; // Exponential backoff
+            }
+            catch (Exception ex)
+            {
+                if (transaction != null)
+                {
+                    await transaction.RollbackAsync();
+                    transaction.Dispose();
+                }
+                Console.WriteLine($"❌ Error inserting market book prices: {ex.Message}");
+                Console.WriteLine($"📋 Stack trace: {ex.StackTrace}");
+                throw;
+            }
         }
-        catch (Exception ex)
-        {
-            await transaction.RollbackAsync();
-            Console.WriteLine($"❌ Error inserting market book prices: {ex.Message}");
-            Console.WriteLine($"📋 Stack trace: {ex.StackTrace}");
-        }
+        
+        // If we get here, all retries failed
+        throw new Exception("Failed to insert market books after multiple retries due to database lock");
     }
 
 

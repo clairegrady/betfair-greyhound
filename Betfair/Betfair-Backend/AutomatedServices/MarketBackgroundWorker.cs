@@ -24,6 +24,10 @@ namespace Betfair.AutomatedServices
         {
             Console.WriteLine("MarketBackgroundWorker started...");
             Console.WriteLine($"EventId: {_eventId}, CompetitionId: {_competitionId}");
+            
+            // Wait 15 seconds for network to be ready
+            Console.WriteLine("⏳ Waiting 15 seconds for network initialization...");
+            await Task.Delay(15000, stoppingToken);
 
             while (!stoppingToken.IsCancellationRequested)
             {
@@ -52,7 +56,7 @@ namespace Betfair.AutomatedServices
                     }
 
                     Console.WriteLine("Waiting 2 minutes before next cycle...");
-                    await Task.Delay(TimeSpan.FromSeconds(600), stoppingToken);
+                    await Task.Delay(TimeSpan.FromSeconds(900), stoppingToken);
                 }
                 catch (Exception ex)
                 {

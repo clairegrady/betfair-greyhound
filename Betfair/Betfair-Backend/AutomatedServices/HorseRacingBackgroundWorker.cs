@@ -34,6 +34,10 @@ namespace Betfair.AutomatedServices
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             _logger.LogInformation("🐎 HorseRacingStartupService started at {Time}", DateTime.Now);
+            
+            // Wait 10 seconds for network to be ready
+            _logger.LogInformation("⏳ Waiting 10 seconds for network initialization...");
+            await Task.Delay(10000, stoppingToken);
 
             int cycleCount = 0;
 
@@ -46,9 +50,17 @@ namespace Betfair.AutomatedServices
                 {
                     // 1. Fetch and store fresh horse racing events
                     _logger.LogDebug("📅 Fetching horse racing events...");
-                    var eventList = await _eventAutomationService.FetchAndStoreListOfEventsAsync(new List<string> { "4339" });
-                    var auEventList = eventList.Where(e => e.Event.CountryCode == "AU").ToList();
-                    _logger.LogInformation("📊 Found {EventCount} AU horse racing events", auEventList.Count);
+                    var eventList = await _eventAutomationService.FetchAndStoreListOfEventsAsync(new List<string> { "7" });
+                    
+                    // Filter for Australian thoroughbred racing ONLY (exclude harness/trotters)
+                    var auEventList = eventList
+                        .Where(e => e.Event.CountryCode == "AU")
+                        .Where(e => !e.Event.Name.Contains("(Pace)", StringComparison.OrdinalIgnoreCase))
+                        .Where(e => !e.Event.Name.Contains("Pace", StringComparison.OrdinalIgnoreCase))
+                        .Where(e => !e.Event.Name.Contains("Trots", StringComparison.OrdinalIgnoreCase))
+                        .Where(e => !e.Event.Name.Contains("Harness", StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+                    _logger.LogInformation("📊 Found {EventCount} AU thoroughbred racing events (excluded harness/trotters)", auEventList.Count);
 
                     // 2. Convert filtered events to strings for market catalogue fetching
                     var eventStrings = auEventList.Select(e => e.Event.Id).ToList();
@@ -62,7 +74,15 @@ namespace Betfair.AutomatedServices
                         {
                             _logger.LogDebug("📋 Processing market catalogues for event {EventId}", ev);
                             var marketCatalogues = await _horseRacingAutomationService.GetAndProcessHorseRacingMarketCataloguesAsync(ev);
-                            _logger.LogDebug("📈 Retrieved {MarketCount} market catalogues for event {EventId}", marketCatalogues.Count, ev);
+                            
+                            // Filter out harness/pacing/trots markets
+                            marketCatalogues = marketCatalogues
+                                .Where(mc => !mc.MarketName.Contains("Pace", StringComparison.OrdinalIgnoreCase))
+                                .Where(mc => !mc.MarketName.Contains("Harness", StringComparison.OrdinalIgnoreCase))
+                                .Where(mc => !mc.MarketName.Contains("Trot", StringComparison.OrdinalIgnoreCase))
+                                .ToList();
+                            
+                            _logger.LogDebug("📈 Retrieved {MarketCount} thoroughbred market catalogues for event {EventId} (filtered harness/pace)", marketCatalogues.Count, ev);
 
                             // Insert market catalogues for this event
                             foreach (var marketCatalogue in marketCatalogues)
@@ -115,14 +135,18 @@ namespace Betfair.AutomatedServices
                     }
 
                     var marketIds = allMarketCatalogues.Select(m => m.MarketId).ToList();
-                    _logger.LogInformation("🎪 Total market IDs to process: {MarketIdCount}", marketIds.Count);
+                    _logger.LogInformation("🎪 Total market IDs collected: {MarketIdCount}", marketIds.Count);
+
+                    // Note: Horse market books are already processed per-event in the loop above (line 100)
+                    // This ensures runner descriptions lookup is populated correctly for each event
+                    // No need to reprocess here as it would cause missing runner names
 
                     if (marketIds.Any())
                     {
                         try
                         {
-                            // 4. Fetch and process market books
-                            _logger.LogDebug("📚 Processing market books...");
+                            // 4. Fetch and process market books for odds/prices
+                            _logger.LogDebug("📚 Processing market books for odds...");
                             await _marketAutomationService.ProcessMarketBooksAsync(marketIds);
                             _logger.LogDebug("✅ Market books processed successfully");
                         }
@@ -131,16 +155,10 @@ namespace Betfair.AutomatedServices
                             _logger.LogError(ex, "❌ Error processing market books");
                         }
 
-                        try
-                        {
-                            _logger.LogDebug("🐎 Processing horse market books...");
-                            await _horseRacingAutomationService.ProcessHorseMarketBooksAsync(marketIds);
-                            _logger.LogDebug("✅ Horse market books processed successfully");
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "❌ Error processing horse market books");
-                        }
+                        // REMOVED: Duplicate horse market book processing
+                        // This was causing 34% of horses to have no names because the runner lookup
+                        // only contained the last event's runners at this point
+                        // Horse market books are now processed per-event above (line 100)
                     }
 
                     try

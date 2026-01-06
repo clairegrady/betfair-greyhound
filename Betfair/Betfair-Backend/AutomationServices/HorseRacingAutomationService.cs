@@ -139,7 +139,8 @@ namespace Betfair.AutomationServices
 
         public void PopulateRunnerDescriptionsLookup(List<MarketCatalogue> marketCatalogues)
         {
-            _runnerDescriptionsLookup.Clear();
+            // Don't clear the lookup - accumulate data across all events
+            // _runnerDescriptionsLookup.Clear();
 
             foreach (var marketCatalogue in marketCatalogues)
             {
@@ -157,6 +158,11 @@ namespace Betfair.AutomationServices
 
             //Console.WriteLine(
                 //$"Populated RunnerDescriptionsLookup with {_runnerDescriptionsLookup.Count} unique runners.");
+        }
+
+        public void ClearRunnerDescriptionsLookup()
+        {
+            _runnerDescriptionsLookup.Clear();
         }
 
         public async Task<List<RunnerFlat>> ProcessHorseMarketBooksAsync(List<string> marketIds)
