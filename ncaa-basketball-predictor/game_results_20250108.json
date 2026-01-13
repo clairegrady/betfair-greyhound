@@ -1,0 +1,352 @@
+[
+  {
+    "away": "USC(4)",
+    "home": "Maryland(8)",
+    "away_score": 79,
+    "home_score": 74,
+    "winner": "away"
+  },
+  {
+    "away": "Alabama(5)",
+    "home": "South Carolina",
+    "away_score": 88,
+    "home_score": 68,
+    "winner": "away"
+  },
+  {
+    "away": "Xavier",
+    "home": "UConn(7)",
+    "away_score": 27,
+    "home_score": 81,
+    "winner": "home"
+  },
+  {
+    "away": "Ohio State(9)",
+    "home": "Michigan(25)",
+    "away_score": 84,
+    "home_score": 77,
+    "winner": "away"
+  },
+  {
+    "away": "UConn(9)",
+    "home": "Villanova",
+    "away_score": 66,
+    "home_score": 68,
+    "winner": "home"
+  },
+  {
+    "away": "Texas A&M(10)",
+    "home": "Oklahoma(17)",
+    "away_score": 80,
+    "home_score": 78,
+    "winner": "away"
+  },
+  {
+    "away": "Arizona State",
+    "home": "Kansas(11)",
+    "away_score": 55,
+    "home_score": 74,
+    "winner": "home"
+  },
+  {
+    "away": "TCU(11)",
+    "home": "Kansas",
+    "away_score": 80,
+    "home_score": 73,
+    "winner": "away"
+  },
+  {
+    "away": "Kansas State(12)",
+    "home": "Utah(22)",
+    "away_score": 71,
+    "home_score": 47,
+    "winner": "away"
+  },
+  {
+    "away": "Penn State",
+    "home": "Illinois(13)",
+    "away_score": 52,
+    "home_score": 91,
+    "winner": "home"
+  },
+  {
+    "away": "West Virginia(17)",
+    "home": "Texas Tech",
+    "away_score": 89,
+    "home_score": 53,
+    "winner": "away"
+  },
+  {
+    "away": "San Diego",
+    "home": "Gonzaga(18)",
+    "away_score": 80,
+    "home_score": 93,
+    "winner": "home"
+  },
+  {
+    "away": "Michigan State(20)",
+    "home": "Nebraska",
+    "away_score": 80,
+    "home_score": 85,
+    "winner": "home"
+  },
+  {
+    "away": "Ole Miss(23)",
+    "home": "Arkansas",
+    "away_score": 73,
+    "home_score": 66,
+    "winner": "away"
+  },
+  {
+    "away": "Northern Illinois",
+    "home": "Akron",
+    "away_score": 71,
+    "home_score": 73,
+    "winner": "home"
+  },
+  {
+    "away": "Loyola (MD)",
+    "home": "Army",
+    "away_score": 72,
+    "home_score": 74,
+    "winner": "home"
+  },
+  {
+    "away": "American",
+    "home": "Boston University",
+    "away_score": 54,
+    "home_score": 60,
+    "winner": "home"
+  },
+  {
+    "away": "Buffalo",
+    "home": "Bowling Green",
+    "away_score": 70,
+    "home_score": 60,
+    "winner": "away"
+  },
+  {
+    "away": "Providence",
+    "home": "Butler",
+    "away_score": 47,
+    "home_score": 57,
+    "winner": "home"
+  },
+  {
+    "away": "Colorado",
+    "home": "UCF",
+    "away_score": 74,
+    "home_score": 75,
+    "winner": "home"
+  },
+  {
+    "away": "Florida Atlantic",
+    "home": "Charlotte",
+    "away_score": 75,
+    "home_score": 64,
+    "winner": "away"
+  },
+  {
+    "away": "UMass",
+    "home": "Dayton",
+    "away_score": 64,
+    "home_score": 67,
+    "winner": "home"
+  },
+  {
+    "away": "St. Joseph's",
+    "home": "Duquesne",
+    "away_score": 81,
+    "home_score": 85,
+    "winner": "home"
+  },
+  {
+    "away": "George Washington",
+    "home": "Fordham",
+    "away_score": 53,
+    "home_score": 61,
+    "winner": "home"
+  },
+  {
+    "away": "Villanova",
+    "home": "Georgetown",
+    "away_score": 77,
+    "home_score": 62,
+    "winner": "away"
+  },
+  {
+    "away": "Charleston Southern",
+    "home": "High Point",
+    "away_score": 51,
+    "home_score": 78,
+    "winner": "home"
+  },
+  {
+    "away": "USC",
+    "home": "Indiana",
+    "away_score": 69,
+    "home_score": 82,
+    "winner": "home"
+  },
+  {
+    "away": "Loyola (IL)",
+    "home": "La Salle",
+    "away_score": 79,
+    "home_score": 68,
+    "winner": "away"
+  },
+  {
+    "away": "Colgate",
+    "home": "Lehigh",
+    "away_score": 70,
+    "home_score": 66,
+    "winner": "away"
+  },
+  {
+    "away": "UNC Asheville",
+    "home": "Longwood",
+    "away_score": 76,
+    "home_score": 85,
+    "winner": "home"
+  },
+  {
+    "away": "ETSU",
+    "home": "Mercer",
+    "away_score": 70,
+    "home_score": 68,
+    "winner": "away"
+  },
+  {
+    "away": "Holy Cross",
+    "home": "Navy",
+    "away_score": 56,
+    "home_score": 67,
+    "winner": "home"
+  },
+  {
+    "away": "IU Indianapolis",
+    "home": "Oakland",
+    "away_score": 79,
+    "home_score": 73,
+    "winner": "away"
+  },
+  {
+    "away": "USC Upstate",
+    "home": "Presbyterian",
+    "away_score": 58,
+    "home_score": 59,
+    "winner": "home"
+  },
+  {
+    "away": "Butler",
+    "home": "Providence",
+    "away_score": 65,
+    "home_score": 84,
+    "winner": "home"
+  },
+  {
+    "away": "George Washington",
+    "home": "Rhode Island",
+    "away_score": 75,
+    "home_score": 67,
+    "winner": "away"
+  },
+  {
+    "away": "DePaul",
+    "home": "Seton Hall",
+    "away_score": 80,
+    "home_score": 85,
+    "winner": "home"
+  },
+  {
+    "away": "Presbyterian",
+    "home": "USC Upstate",
+    "away_score": 67,
+    "home_score": 77,
+    "winner": "home"
+  },
+  {
+    "away": "Saint Louis",
+    "home": "St. Bonaventure",
+    "away_score": 66,
+    "home_score": 68,
+    "winner": "home"
+  },
+  {
+    "away": "Kent State",
+    "home": "Toledo",
+    "away_score": 59,
+    "home_score": 70,
+    "winner": "home"
+  },
+  {
+    "away": "Fordham",
+    "home": "VCU",
+    "away_score": 61,
+    "home_score": 73,
+    "winner": "home"
+  },
+  {
+    "away": "Ohio",
+    "home": "Western Michigan",
+    "away_score": 49,
+    "home_score": 66,
+    "winner": "home"
+  },
+  {
+    "away": "Illinois State",
+    "home": "Evansville",
+    "away_score": 51,
+    "home_score": 69,
+    "winner": "home"
+  },
+  {
+    "away": "VCU",
+    "home": "Loyola (IL)",
+    "away_score": 62,
+    "home_score": 44,
+    "winner": "away"
+  },
+  {
+    "away": "Rutgers",
+    "home": "Minnesota",
+    "away_score": 50,
+    "home_score": 76,
+    "winner": "home"
+  },
+  {
+    "away": "Rice",
+    "home": "North Texas",
+    "away_score": 59,
+    "home_score": 81,
+    "winner": "home"
+  },
+  {
+    "away": "Murray State",
+    "home": "Northern Iowa",
+    "away_score": 71,
+    "home_score": 68,
+    "winner": "away"
+  },
+  {
+    "away": "Rice",
+    "home": "UTSA",
+    "away_score": 58,
+    "home_score": 67,
+    "winner": "home"
+  },
+  {
+    "away": "North Texas",
+    "home": "Tulane",
+    "away_score": 62,
+    "home_score": 65,
+    "winner": "home"
+  },
+  {
+    "away": "Indiana State",
+    "home": "Valparaiso",
+    "away_score": 95,
+    "home_score": 98,
+    "winner": "home"
+  }
+]

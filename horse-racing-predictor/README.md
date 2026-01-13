@@ -24,7 +24,7 @@ Uses tiered Kelly staking (25% Kelly fraction) based on proven edges.
 
 ### Databases
 - `paper_trades.db` - Paper bet records
-- `race_times.db` - Scraped race schedules
+- `race_info.db` - Scraped race schedules
 - `horse_racing_ml.db` - Combined historical data (161K horses, Jan 2024 - Nov 2025)
 
 ## Setup
@@ -51,7 +51,7 @@ python check_results.py
 
 ## How It Works
 
-1. **Scraper** gets race times from racenet.com.au and stores in `race_times.db`
+1. **Scraper** gets race times from racenet.com.au and stores in `race_info.db`
 2. **Backend** (C# service in `/Betfair/Betfair-Backend/`) queries Betfair API and stores market data
 3. **Paper trading** monitors upcoming races and:
    - Gets current PLACE market odds from backend API

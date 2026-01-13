@@ -16,6 +16,12 @@ public class GreyhoundAutomationService
     private readonly MarketBookDb _marketBookDb;
     private readonly EventDb2 _eventDb;
     
+    // Cache for runner names (MarketId -> Dictionary of SelectionId -> RunnerName)
+    private readonly Dictionary<string, Dictionary<long, string>> _runnerNamesCache = new();
+    
+    // Cache for market metadata (MarketId -> (Venue, EventDate))
+    private readonly Dictionary<string, (string? Venue, DateTime? EventDate)> _marketMetadataCache = new();
+    
     public GreyhoundAutomationService(IMarketApiService marketApiService, ListMarketCatalogueDb listMarketCatalogueDb, MarketBookDb marketBookDb, EventDb2 eventDb)
     {
         _marketApiService = marketApiService;
@@ -38,35 +44,53 @@ public class GreyhoundAutomationService
                     BetDelay = book.BetDelay,
                     LastMatchTime = book.LastMatchTime,
                     TotalMatched = book.TotalMatched,
-                    Runners = book.Runners?.Select(runner => new ApiRunner
-                    {
-                        SelectionId = runner.SelectionId,
-                        Status = runner.Status,
-                        LastPriceTraded = runner.LastPriceTraded,
-                        TotalMatched = runner.TotalMatched,
-
-                        Exchange = runner.Exchange != null
-                            ? new Exchange
-                            {
-                                AvailableToBack = runner.Exchange.AvailableToBack?.Select(p => new PriceSize
+                    Runners = book.Runners?.Select(runner => {
+                        // Try to get runner name from cache (populated by ProcessGreyhoundMarketCataloguesAsync)
+                        string? runnerName = null;
+                        if (_runnerNamesCache.TryGetValue(book.MarketId, out var runnerMap))
+                        {
+                            runnerMap.TryGetValue(runner.SelectionId, out runnerName);
+                        }
+                        
+                        return new ApiRunner
+                        {
+                            SelectionId = runner.SelectionId,
+                            Status = runner.Status,
+                            LastPriceTraded = runner.LastPriceTraded,
+                            TotalMatched = runner.TotalMatched,
+                            Handicap = runner.Handicap,
+                            // Add Description with RunnerName from cache
+                            Description = runnerName != null 
+                                ? new RunnerDescription
                                 {
-                                    Price = p.Price,
-                                    Size = p.Size
-                                }).ToList() ?? new List<PriceSize>(),
-
-                                AvailableToLay = runner.Exchange.AvailableToLay?.Select(p => new PriceSize
+                                    SelectionId = runner.SelectionId,
+                                    RunnerName = runnerName,
+                                    Metadata = runner.Description?.Metadata
+                                }
+                                : runner.Description, // Fall back to original if no cache entry
+                            Exchange = runner.Exchange != null
+                                ? new Exchange
                                 {
-                                    Price = p.Price,
-                                    Size = p.Size
-                                }).ToList() ?? new List<PriceSize>(),
+                                    AvailableToBack = runner.Exchange.AvailableToBack?.Select(p => new PriceSize
+                                    {
+                                        Price = p.Price,
+                                        Size = p.Size
+                                    }).ToList() ?? new List<PriceSize>(),
 
-                                TradedVolume = runner.Exchange.TradedVolume?.Select(p => new PriceSize
-                                {
-                                    Price = p.Price,
-                                    Size = p.Size
-                                }).ToList() ?? new List<PriceSize>()
-                            }
-                            : null,
+                                    AvailableToLay = runner.Exchange.AvailableToLay?.Select(p => new PriceSize
+                                    {
+                                        Price = p.Price,
+                                        Size = p.Size
+                                    }).ToList() ?? new List<PriceSize>(),
+
+                                    TradedVolume = runner.Exchange.TradedVolume?.Select(p => new PriceSize
+                                    {
+                                        Price = p.Price,
+                                        Size = p.Size
+                                    }).ToList() ?? new List<PriceSize>()
+                                }
+                                : null,
+                        };
                     }).ToList() ?? new List<ApiRunner>()
                 })
                 .ToList();
@@ -168,21 +192,26 @@ public class GreyhoundAutomationService
         .ToList();
 
     var today = DateTime.Now.Date;
+    var twoDaysFromNow = today.AddDays(2);
 
     Console.WriteLine($"🔍 Filtering {marketCatalogues.Count} market catalogues for eventId: {targetEventId}");
-    Console.WriteLine($"🔍 Today's date: {today}");
+    Console.WriteLine($"🔍 Date range: {today} to {twoDaysFromNow}");
     
     var filteredMarketCatalogues = marketCatalogues
         .Where(catalogue =>
         {
-            var eventIdMatch = catalogue.Event?.Id?.Equals(targetEventId, StringComparison.OrdinalIgnoreCase) ?? false;
             var marketNameMatch = Regex.IsMatch(catalogue.MarketName, @"^R\d{1,2}");
             var hasOpenDate = catalogue.Event?.OpenDate.HasValue ?? false;
-            var isToday = hasOpenDate && catalogue.Event.OpenDate.Value.ToLocalTime().Date == today;
+            var openDate = hasOpenDate ? catalogue.Event.OpenDate.Value.ToLocalTime().Date : DateTime.MinValue;
+            var isWithinRange = hasOpenDate && openDate >= today.AddDays(-1) && openDate <= twoDaysFromNow;
             
-            Console.WriteLine($"🔍 Market: {catalogue.MarketName}, EventId: {catalogue.Event?.Id}, EventIdMatch: {eventIdMatch}, MarketNameMatch: {marketNameMatch}, HasOpenDate: {hasOpenDate}, IsToday: {isToday}");
+            // Only filter by eventId if a specific one was requested, otherwise get all markets in date range
+            var eventIdMatch = string.IsNullOrEmpty(targetEventId) || 
+                             (catalogue.Event?.Id?.Equals(targetEventId, StringComparison.OrdinalIgnoreCase) ?? false);
             
-            return eventIdMatch && marketNameMatch && hasOpenDate && isToday;
+            Console.WriteLine($"🔍 Market: {catalogue.MarketName}, EventId: {catalogue.Event?.Id}, Venue: {catalogue.Event?.Name}, MarketNameMatch: {marketNameMatch}, OpenDate: {openDate}, IsWithinRange: {isWithinRange}, EventIdMatch: {eventIdMatch}");
+            
+            return eventIdMatch && marketNameMatch && hasOpenDate && isWithinRange;
         })
         .ToList();
 
@@ -190,6 +219,22 @@ public class GreyhoundAutomationService
 
     if (filteredMarketCatalogues.Any())
     {
+        // FIRST: Cache runner names for use in market books processing
+        foreach (var marketCatalogue in filteredMarketCatalogues)
+        {
+            if (marketCatalogue.Runners != null && marketCatalogue.Runners.Any())
+            {
+                var runnerMap = new Dictionary<long, string>();
+                foreach (var runner in marketCatalogue.Runners)
+                {
+                    runnerMap[runner.SelectionId] = runner.RunnerName ?? $"Greyhound {runner.SelectionId}";
+                }
+                _runnerNamesCache[marketCatalogue.MarketId] = runnerMap;
+                
+                Console.WriteLine($"✅ Cached {runnerMap.Count} runner names for market {marketCatalogue.MarketId}");
+            }
+        }
+        
         await _listMarketCatalogueDb.InsertMarketsIntoDatabase(filteredMarketCatalogues);
         
         // Also store in EventMarkets table for greyhound market book insertion

@@ -364,6 +364,37 @@ public class MarketBookDb
     }
 
 
+    private static (string? venue, string? eventDate) ParseEventName(string? eventName)
+    {
+        if (string.IsNullOrEmpty(eventName))
+            return (null, null);
+
+        // Example: "Healesville (AUS) 13th Jan"
+        // Extract venue before " (" and date after ") "
+        var match = System.Text.RegularExpressions.Regex.Match(eventName, @"^(.+?)\s+\([A-Z]+\)\s+(.+)$");
+        if (match.Success)
+        {
+            return (match.Groups[1].Value, match.Groups[2].Value);
+        }
+
+        return (null, null);
+    }
+
+    private static (int? boxNumber, string? cleanName) ParseRunnerName(string? runnerName)
+    {
+        if (string.IsNullOrEmpty(runnerName))
+            return (null, null);
+
+        // Example: "3. Chubby Sammy" -> box=3, name="Chubby Sammy"
+        var match = System.Text.RegularExpressions.Regex.Match(runnerName, @"^(\d+)\.\s*(.+)$");
+        if (match.Success && int.TryParse(match.Groups[1].Value, out int boxNum))
+        {
+            return (boxNum, match.Groups[2].Value.Trim());
+        }
+
+        return (null, runnerName);
+    }
+
     public async Task InsertGreyhoundMarketBooksIntoDatabase(List<MarketBook<ApiRunner>> marketBooks)
     {
         Console.WriteLine($"🔗 Opening database connection for {marketBooks.Count} greyhound market books");
@@ -381,8 +412,14 @@ public class MarketBookDb
                 var marketInfo = await GetMarketNameAndEventNameByMarketId(connection, marketId);
                 Console.WriteLine($"🔍 Processing market {marketId}: {marketInfo?.MarketName} - {marketInfo?.EventName}");
 
+                // Parse EventName to extract Venue and EventDate
+                var (venue, eventDate) = ParseEventName(marketInfo?.EventName);
+
                 foreach (var runner in marketBook.Runners)
                 {
+                    // Parse RunnerName to extract box number
+                    var (boxNumber, cleanRunnerName) = ParseRunnerName(runner.Description?.RunnerName);
+
                     if (runner.Exchange?.AvailableToBack != null)
                     {
                         foreach (var back in runner.Exchange.AvailableToBack)
@@ -390,9 +427,9 @@ public class MarketBookDb
                             using var command = connection.CreateCommand();
                             command.CommandText = @"
                                 INSERT INTO GreyhoundMarketBook
-                                (MarketId, MarketName, SelectionId, Status, PriceType, Price, Size, RunnerName, Venue, EventDate, EventName, Handicap, RunnerId)
+                                (MarketId, MarketName, SelectionId, Status, PriceType, Price, Size, RunnerName, Venue, EventDate, EventName, box, RunnerId)
                                 VALUES
-                                ($MarketId, $MarketName, $SelectionId, $Status, $PriceType, $Price, $Size, $RunnerName, $Venue, $EventDate, $EventName, $Handicap, $RunnerId)";
+                                ($MarketId, $MarketName, $SelectionId, $Status, $PriceType, $Price, $Size, $RunnerName, $Venue, $EventDate, $EventName, $box, $RunnerId)";
 
                             command.Parameters.AddWithValue("$MarketId", marketId ?? (object)DBNull.Value);
                             command.Parameters.AddWithValue("$MarketName", marketInfo?.MarketName ?? (object)DBNull.Value);
@@ -401,12 +438,12 @@ public class MarketBookDb
                             command.Parameters.AddWithValue("$PriceType", "AvailableToBack");
                             command.Parameters.AddWithValue("$Price", (double)back.Price);
                             command.Parameters.AddWithValue("$Size", (double)back.Size);
-                            command.Parameters.AddWithValue("$RunnerName", runner.Description?.RunnerName ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("$Venue", (object)DBNull.Value); // Not available for horse racing
-                            command.Parameters.AddWithValue("$EventDate", (object)DBNull.Value); // Not available for horse racing
+                            command.Parameters.AddWithValue("$RunnerName", cleanRunnerName ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("$Venue", venue ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("$EventDate", eventDate ?? (object)DBNull.Value);
                             command.Parameters.AddWithValue("$EventName", marketInfo?.EventName ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("$Handicap", runner.Handicap);
-                            command.Parameters.AddWithValue("$RunnerId", runner.Description?.Metadata?.RunnerId ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("$box", boxNumber.HasValue ? boxNumber.Value : (object)DBNull.Value);
+                            command.Parameters.AddWithValue("$RunnerId", runner.SelectionId); // Use SelectionId as RunnerId for greyhounds
 
                             await command.ExecuteNonQueryAsync();
                             totalInserted++;
@@ -420,9 +457,9 @@ public class MarketBookDb
                             using var command = connection.CreateCommand();
                             command.CommandText = @"
                                 INSERT INTO GreyhoundMarketBook
-                                (MarketId, MarketName, SelectionId, Status, PriceType, Price, Size, RunnerName, Venue, EventDate, EventName, Handicap, RunnerId)
+                                (MarketId, MarketName, SelectionId, Status, PriceType, Price, Size, RunnerName, Venue, EventDate, EventName, box, RunnerId)
                                 VALUES
-                                ($MarketId, $MarketName, $SelectionId, $Status, $PriceType, $Price, $Size, $RunnerName, $Venue, $EventDate, $EventName, $Handicap, $RunnerId)";
+                                ($MarketId, $MarketName, $SelectionId, $Status, $PriceType, $Price, $Size, $RunnerName, $Venue, $EventDate, $EventName, $box, $RunnerId)";
 
                             command.Parameters.AddWithValue("$MarketId", marketId ?? (object)DBNull.Value);
                             command.Parameters.AddWithValue("$MarketName", marketInfo?.MarketName ?? (object)DBNull.Value);
@@ -431,12 +468,12 @@ public class MarketBookDb
                             command.Parameters.AddWithValue("$PriceType", "AvailableToLay");
                             command.Parameters.AddWithValue("$Price", (double)lay.Price);
                             command.Parameters.AddWithValue("$Size", (double)lay.Size);
-                            command.Parameters.AddWithValue("$RunnerName", runner.Description?.RunnerName ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("$Venue", (object)DBNull.Value); // Not available for horse racing
-                            command.Parameters.AddWithValue("$EventDate", (object)DBNull.Value); // Not available for horse racing
+                            command.Parameters.AddWithValue("$RunnerName", cleanRunnerName ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("$Venue", venue ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("$EventDate", eventDate ?? (object)DBNull.Value);
                             command.Parameters.AddWithValue("$EventName", marketInfo?.EventName ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("$Handicap", runner.Handicap);
-                            command.Parameters.AddWithValue("$RunnerId", runner.Description?.Metadata?.RunnerId ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("$box", boxNumber.HasValue ? boxNumber.Value : (object)DBNull.Value);
+                            command.Parameters.AddWithValue("$RunnerId", runner.SelectionId); // Use SelectionId as RunnerId for greyhounds
 
                             await command.ExecuteNonQueryAsync();
                             totalInserted++;

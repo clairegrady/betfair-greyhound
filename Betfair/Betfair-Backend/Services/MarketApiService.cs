@@ -110,31 +110,92 @@ public class MarketApiService : IMarketApiService
     public async Task<string> ListMarketBookAsync(List<string> marketIds)
     {
         _sessionToken = await _authService.GetSessionTokenAsync();
-        const int maxMarketIds = 10; // Reduced to 10 to avoid TOO_MUCH_DATA error
+        const int maxMarketIds = 40; // Betfair allows up to 40 markets per request
 
-        var limitedMarketIds = marketIds.Take(maxMarketIds).ToList();
-
-        var requestBody = new
+        // If we have more than maxMarketIds, batch the requests
+        if (marketIds.Count <= maxMarketIds)
         {
-            jsonrpc = "2.0",
-            method = "SportsAPING/v1.0/listMarketBook",
-            @params = new
+            // Single request
+            var requestBody = new
             {
-                marketIds = limitedMarketIds,
-                // Simplify price projection to reduce data size
-                priceProjection = new { priceData = new[] { "EX_BEST_OFFERS" } } // Only best offers, not all traded data
-            },
-            id = 1
-        };
+                jsonrpc = "2.0",
+                method = "SportsAPING/v1.0/listMarketBook",
+                @params = new
+                {
+                    marketIds = marketIds,
+                    priceProjection = new { priceData = new[] { "EX_BEST_OFFERS" } }
+                },
+                id = 1
+            };
 
-        _httpClient.DefaultRequestHeaders.Remove("X-Authentication");
-        _httpClient.DefaultRequestHeaders.Add("X-Authentication", _sessionToken);
+            _httpClient.DefaultRequestHeaders.Remove("X-Authentication");
+            _httpClient.DefaultRequestHeaders.Add("X-Authentication", _sessionToken);
 
-        var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
-        var response = await _httpClient.PostAsync(_settings.ExchangeEndpoint, content);
-        response.EnsureSuccessStatusCode();
-        var result = await response.Content.ReadAsStringAsync();
-        return result;
+            var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
+            var response = await _httpClient.PostAsync(_settings.ExchangeEndpoint, content);
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadAsStringAsync();
+        }
+        else
+        {
+            // Multiple batched requests
+            var allResults = new List<dynamic>();
+            
+            for (int i = 0; i < marketIds.Count; i += maxMarketIds)
+            {
+                var batch = marketIds.Skip(i).Take(maxMarketIds).ToList();
+                
+                var requestBody = new
+                {
+                    jsonrpc = "2.0",
+                    method = "SportsAPING/v1.0/listMarketBook",
+                    @params = new
+                    {
+                        marketIds = batch,
+                        priceProjection = new { priceData = new[] { "EX_BEST_OFFERS" } }
+                    },
+                    id = 1
+                };
+
+                _httpClient.DefaultRequestHeaders.Remove("X-Authentication");
+                _httpClient.DefaultRequestHeaders.Add("X-Authentication", _sessionToken);
+
+                var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
+                var response = await _httpClient.PostAsync(_settings.ExchangeEndpoint, content);
+                response.EnsureSuccessStatusCode();
+                var batchResult = await response.Content.ReadAsStringAsync();
+                
+                // Parse and combine results
+                var batchResponse = JsonSerializer.Deserialize<dynamic>(batchResult);
+                if (batchResponse != null)
+                {
+                    var resultProperty = ((JsonElement)batchResponse).GetProperty("result");
+                    if (resultProperty.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var item in resultProperty.EnumerateArray())
+                        {
+                            allResults.Add(item);
+                        }
+                    }
+                }
+                
+                // Small delay between batches to avoid rate limiting
+                if (i + maxMarketIds < marketIds.Count)
+                {
+                    await Task.Delay(100);
+                }
+            }
+            
+            // Combine all results into a single response
+            var combinedResponse = new
+            {
+                jsonrpc = "2.0",
+                result = allResults,
+                id = 1
+            };
+            
+            return JsonSerializer.Serialize(combinedResponse);
+        }
     }
     /// <summary>
     /// Fetch NCAA Basketball markets from Betfair

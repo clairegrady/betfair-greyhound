@@ -38,26 +38,43 @@ public class GreyhoundBackgroundWorker : BackgroundService
         {
             try
             {
-                // Fetch Australian greyhound events
+                // Fetch Australian and New Zealand greyhound events
                 var eventList = await _eventAutomationService.FetchAndStoreListOfEventsAsync(new List<string> {"4339"});
-                var auEventList = eventList.Where(e => e.Event.CountryCode == "AU").ToList();
+                var auNzEventList = eventList.Where(e => e.Event.CountryCode == "AU" || e.Event.CountryCode == "NZ").ToList();
                 
-                Console.WriteLine($"Found {auEventList.Count} Australian greyhound events");
+                Console.WriteLine($"Found {auNzEventList.Count} AU/NZ greyhound events (AU: {eventList.Count(e => e.Event.CountryCode == "AU")}, NZ: {eventList.Count(e => e.Event.CountryCode == "NZ")})");
 
-                if (auEventList.Any())
+                if (auNzEventList.Any())
                 {
-                    var eventStrings = ConvertEventListToStrings(auEventList);
-                    var marketCatalogues = new List<MarketCatalogue>();
+                    var eventStrings = ConvertEventListToStrings(auNzEventList);
+                    var allMarketCatalogues = new List<MarketCatalogue>();
 
-                    // Process market catalogues for each event
+                    // Process market catalogues and books for EACH event separately (like horse racing does)
                     foreach (var ev in eventStrings)
                     {
                         try
                         {
                             Console.WriteLine($"🔍 Processing event: {ev}");
-                            var result = await _greyhoundAutomationService.ProcessGreyhoundMarketCataloguesAsync(ev);
-                            Console.WriteLine($"🔍 Got {result.Count} market catalogues for event {ev}");
-                            marketCatalogues.AddRange(result);
+                            var marketCatalogues = await _greyhoundAutomationService.ProcessGreyhoundMarketCataloguesAsync(ev);
+                            Console.WriteLine($"🔍 Got {marketCatalogues.Count} market catalogues for event {ev}");
+                            
+                            allMarketCatalogues.AddRange(marketCatalogues);
+                            
+                            // Process Market Books immediately while runner lookup is populated
+                            if (marketCatalogues.Any())
+                            {
+                                try
+                                {
+                                    var eventMarketIds = marketCatalogues.Select(mc => mc.MarketId).ToList();
+                                    Console.WriteLine($"🐕 Processing {eventMarketIds.Count} market books for event {ev}");
+                                    await _greyhoundAutomationService.ProcessGreyhoundMarketBooksAsync(eventMarketIds);
+                                    Console.WriteLine($"✅ Market Books processed for event {ev}");
+                                }
+                                catch (Exception mbEx)
+                                {
+                                    Console.WriteLine($"❌ Error processing Market Books for event {ev}: {mbEx.Message}");
+                                }
+                            }
                         }
                         catch (Exception ex)
                         {
@@ -65,26 +82,11 @@ public class GreyhoundBackgroundWorker : BackgroundService
                         }
                     }
                     
-                    Console.WriteLine($"🔍 Total market catalogues collected: {marketCatalogues.Count}");
-
-                    if (marketCatalogues.Any())
-                    {
-                        var marketIds = marketCatalogues
-                            .Select(market => market.MarketId)
-                            .ToList();
-
-                        Console.WriteLine($"🐕 Processing {marketIds.Count} greyhound market books");
-                        await _greyhoundAutomationService.ProcessGreyhoundMarketBooksAsync(marketIds);
-                        Console.WriteLine($"✅ Successfully processed {marketIds.Count} greyhound markets");
-                    }
-                    else
-                    {
-                        Console.WriteLine("❌ No greyhound market catalogues found");
-                    }
+                    Console.WriteLine($"🔍 Total market catalogues collected: {allMarketCatalogues.Count}");
                 }
                 else
                 {
-                    Console.WriteLine("No Australian greyhound events found");
+                    Console.WriteLine("No AU/NZ greyhound events found");
                 }
 
                 // Wait 2 minutes before next iteration

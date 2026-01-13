@@ -1,0 +1,379 @@
+{
+  "daily": [
+    {
+      "date": "2025-11-04",
+      "correct": 18,
+      "total": 20,
+      "accuracy": 90.0
+    },
+    {
+      "date": "2025-11-05",
+      "correct": 12,
+      "total": 14,
+      "accuracy": 85.71428571428571
+    },
+    {
+      "date": "2025-11-06",
+      "correct": 21,
+      "total": 25,
+      "accuracy": 84.0
+    },
+    {
+      "date": "2025-11-07",
+      "correct": 44,
+      "total": 57,
+      "accuracy": 77.19298245614034
+    },
+    {
+      "date": "2025-11-08",
+      "correct": 49,
+      "total": 59,
+      "accuracy": 83.05084745762711
+    },
+    {
+      "date": "2025-11-09",
+      "correct": 23,
+      "total": 29,
+      "accuracy": 79.3103448275862
+    },
+    {
+      "date": "2025-11-10",
+      "correct": 19,
+      "total": 26,
+      "accuracy": 73.07692307692307
+    },
+    {
+      "date": "2025-11-11",
+      "correct": 52,
+      "total": 66,
+      "accuracy": 78.78787878787878
+    },
+    {
+      "date": "2025-11-12",
+      "correct": 39,
+      "total": 43,
+      "accuracy": 90.69767441860465
+    },
+    {
+      "date": "2025-11-13",
+      "correct": 14,
+      "total": 16,
+      "accuracy": 87.5
+    },
+    {
+      "date": "2025-11-14",
+      "correct": 38,
+      "total": 46,
+      "accuracy": 82.6086956521739
+    },
+    {
+      "date": "2025-11-15",
+      "correct": 59,
+      "total": 73,
+      "accuracy": 80.82191780821918
+    },
+    {
+      "date": "2025-11-16",
+      "correct": 24,
+      "total": 30,
+      "accuracy": 80.0
+    },
+    {
+      "date": "2025-11-17",
+      "correct": 19,
+      "total": 25,
+      "accuracy": 76.0
+    },
+    {
+      "date": "2025-11-18",
+      "correct": 47,
+      "total": 56,
+      "accuracy": 83.92857142857143
+    },
+    {
+      "date": "2025-11-19",
+      "correct": 26,
+      "total": 38,
+      "accuracy": 68.42105263157895
+    },
+    {
+      "date": "2025-11-20",
+      "correct": 27,
+      "total": 33,
+      "accuracy": 81.81818181818183
+    },
+    {
+      "date": "2025-11-21",
+      "correct": 54,
+      "total": 67,
+      "accuracy": 80.59701492537313
+    },
+    {
+      "date": "2025-11-22",
+      "correct": 30,
+      "total": 38,
+      "accuracy": 78.94736842105263
+    },
+    {
+      "date": "2025-11-23",
+      "correct": 30,
+      "total": 42,
+      "accuracy": 71.42857142857143
+    },
+    {
+      "date": "2025-11-24",
+      "correct": 41,
+      "total": 56,
+      "accuracy": 73.21428571428571
+    },
+    {
+      "date": "2025-11-25",
+      "correct": 54,
+      "total": 66,
+      "accuracy": 81.81818181818183
+    },
+    {
+      "date": "2025-11-26",
+      "correct": 48,
+      "total": 62,
+      "accuracy": 77.41935483870968
+    },
+    {
+      "date": "2025-11-27",
+      "correct": 15,
+      "total": 20,
+      "accuracy": 75.0
+    },
+    {
+      "date": "2025-11-28",
+      "correct": 39,
+      "total": 52,
+      "accuracy": 75.0
+    },
+    {
+      "date": "2025-11-29",
+      "correct": 36,
+      "total": 50,
+      "accuracy": 72.0
+    },
+    {
+      "date": "2025-11-30",
+      "correct": 22,
+      "total": 28,
+      "accuracy": 78.57142857142857
+    },
+    {
+      "date": "2025-12-01",
+      "correct": 5,
+      "total": 11,
+      "accuracy": 45.45454545454545
+    },
+    {
+      "date": "2025-12-02",
+      "correct": 39,
+      "total": 51,
+      "accuracy": 76.47058823529412
+    },
+    {
+      "date": "2025-12-03",
+      "correct": 54,
+      "total": 69,
+      "accuracy": 78.26086956521739
+    },
+    {
+      "date": "2025-12-04",
+      "correct": 8,
+      "total": 9,
+      "accuracy": 88.88888888888889
+    },
+    {
+      "date": "2025-12-05",
+      "correct": 15,
+      "total": 18,
+      "accuracy": 83.33333333333334
+    },
+    {
+      "date": "2025-12-06",
+      "correct": 71,
+      "total": 105,
+      "accuracy": 67.61904761904762
+    },
+    {
+      "date": "2025-12-07",
+      "correct": 32,
+      "total": 39,
+      "accuracy": 82.05128205128204
+    },
+    {
+      "date": "2025-12-08",
+      "correct": 6,
+      "total": 6,
+      "accuracy": 100.0
+    },
+    {
+      "date": "2025-12-09",
+      "correct": 20,
+      "total": 23,
+      "accuracy": 86.95652173913044
+    },
+    {
+      "date": "2025-12-10",
+      "correct": 22,
+      "total": 29,
+      "accuracy": 75.86206896551724
+    },
+    {
+      "date": "2025-12-11",
+      "correct": 6,
+      "total": 8,
+      "accuracy": 75.0
+    },
+    {
+      "date": "2025-12-12",
+      "correct": 6,
+      "total": 8,
+      "accuracy": 75.0
+    },
+    {
+      "date": "2025-12-13",
+      "correct": 70,
+      "total": 93,
+      "accuracy": 75.26881720430107
+    },
+    {
+      "date": "2025-12-14",
+      "correct": 16,
+      "total": 24,
+      "accuracy": 66.66666666666666
+    },
+    {
+      "date": "2025-12-15",
+      "correct": 5,
+      "total": 7,
+      "accuracy": 71.42857142857143
+    },
+    {
+      "date": "2025-12-16",
+      "correct": 32,
+      "total": 36,
+      "accuracy": 88.88888888888889
+    },
+    {
+      "date": "2025-12-17",
+      "correct": 41,
+      "total": 50,
+      "accuracy": 82.0
+    },
+    {
+      "date": "2025-12-18",
+      "correct": 20,
+      "total": 27,
+      "accuracy": 74.07407407407408
+    },
+    {
+      "date": "2025-12-19",
+      "correct": 17,
+      "total": 23,
+      "accuracy": 73.91304347826086
+    },
+    {
+      "date": "2025-12-20",
+      "correct": 42,
+      "total": 64,
+      "accuracy": 65.625
+    },
+    {
+      "date": "2025-12-21",
+      "correct": 44,
+      "total": 52,
+      "accuracy": 84.61538461538461
+    },
+    {
+      "date": "2025-12-22",
+      "correct": 40,
+      "total": 42,
+      "accuracy": 95.23809523809523
+    },
+    {
+      "date": "2025-12-23",
+      "correct": 9,
+      "total": 11,
+      "accuracy": 81.81818181818183
+    },
+    {
+      "date": "2025-12-27",
+      "correct": 1,
+      "total": 1,
+      "accuracy": 100.0
+    },
+    {
+      "date": "2025-12-28",
+      "correct": 15,
+      "total": 20,
+      "accuracy": 75.0
+    },
+    {
+      "date": "2025-12-29",
+      "correct": 46,
+      "total": 58,
+      "accuracy": 79.3103448275862
+    },
+    {
+      "date": "2025-12-30",
+      "correct": 24,
+      "total": 32,
+      "accuracy": 75.0
+    },
+    {
+      "date": "2025-12-31",
+      "correct": 35,
+      "total": 47,
+      "accuracy": 74.46808510638297
+    },
+    {
+      "date": "2026-01-01",
+      "correct": 26,
+      "total": 38,
+      "accuracy": 68.42105263157895
+    },
+    {
+      "date": "2026-01-02",
+      "correct": 23,
+      "total": 32,
+      "accuracy": 71.875
+    },
+    {
+      "date": "2026-01-03",
+      "correct": 87,
+      "total": 120,
+      "accuracy": 72.5
+    },
+    {
+      "date": "2026-01-04",
+      "correct": 30,
+      "total": 40,
+      "accuracy": 75.0
+    },
+    {
+      "date": "2026-01-05",
+      "correct": 9,
+      "total": 19,
+      "accuracy": 47.368421052631575
+    },
+    {
+      "date": "2026-01-06",
+      "correct": 22,
+      "total": 29,
+      "accuracy": 75.86206896551724
+    },
+    {
+      "date": "2026-01-07",
+      "correct": 35,
+      "total": 53,
+      "accuracy": 66.0377358490566
+    }
+  ],
+  "total_games": 2431,
+  "total_correct": 1873,
+  "overall_accuracy": 77.04648292883587
+}

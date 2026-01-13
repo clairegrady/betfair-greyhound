@@ -209,7 +209,7 @@ def main():
     logger.info(f"Scraping Sports Reference for {len(teams)} teams...")
     
     total_updated = 0
-    season = 2026  # CURRENT SEASON (2025-26)
+    season = 2025  # 2024-25 SEASON (most recent complete data on Sports Reference)
     
     for i, (team_name, kenpom_name) in enumerate(teams, 1):
         # Use kenpom_name if available, otherwise use team_name

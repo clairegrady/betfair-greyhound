@@ -23,7 +23,7 @@ class RaceTimesScraper:
     
     def __init__(self, db_path: str = None):
         self.base_url = "https://www.racenet.com.au"
-        self.db_path = db_path or "/Users/clairegrady/RiderProjects/betfair/horse-racing-predictor/race_times.db"
+        self.db_path = db_path or "/Users/clairegrady/RiderProjects/betfair/horse-racing-predictor/race_info.db"
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
@@ -62,6 +62,7 @@ class RaceTimesScraper:
             'Sale': 'Australia/Melbourne',
             'Sandown Hillside': 'Australia/Melbourne',
             'Sandown': 'Australia/Melbourne',
+            'Sandown Lakeside': 'Australia/Melbourne',
             'Seymour': 'Australia/Melbourne',
             'Swan Hill': 'Australia/Melbourne',
             'Stawell': 'Australia/Melbourne',
@@ -84,6 +85,7 @@ class RaceTimesScraper:
             'Forbes': 'Australia/Sydney',
             'Gilgandra': 'Australia/Sydney',
             'Gosford': 'Australia/Sydney',
+            'Glen Innes': 'Australia/Sydney',
             'Gundagai': 'Australia/Sydney',
             'Hawkesbury': 'Australia/Sydney',
             'Kembla Grange': 'Australia/Sydney',
@@ -111,9 +113,11 @@ class RaceTimesScraper:
             'Taree': 'Australia/Sydney',
             'Wagga': 'Australia/Sydney',
             'Warwick Farm': 'Australia/Sydney',
+            'Wyong': 'Australia/Sydney',
             
             # Australia - QLD
             'Aquis Park Gold Coast Polytrack': 'Australia/Brisbane',
+            'Ballina': 'Australia/Sydney',
             'Beaudesert': 'Australia/Brisbane',
             'Doomben': 'Australia/Brisbane',
             'Eagle Farm': 'Australia/Brisbane',
@@ -384,14 +388,15 @@ class RaceTimesScraper:
                 # Get timezone for this venue
                 timezone = self.venue_timezones.get(normalized_venue, None)
                 
-                # FILTER: Only save races from venues we know AND have Australian timezones
+                # FILTER: Only save races from venues we know AND have Australian or NZ timezones
                 if timezone is None:
                     logger.debug(f"Skipping unknown venue: {normalized_venue}")
                     skipped_count += 1
                     continue
                 
-                if 'Australia' not in timezone:
-                    logger.debug(f"Skipping non-Australian venue: {normalized_venue} (timezone: {timezone})")
+                # Allow Australian and NZ races
+                if 'Australia' not in timezone and 'Pacific/Auckland' not in timezone:
+                    logger.debug(f"Skipping non-Australian/NZ venue: {normalized_venue} (timezone: {timezone})")
                     skipped_count += 1
                     continue
                 
@@ -430,7 +435,7 @@ class RaceTimesScraper:
         
         conn.commit()
         conn.close()
-        logger.info(f"Saved {saved_count} Australian race times to database (skipped {skipped_count} non-Australian races)")
+        logger.info(f"Saved {saved_count} Australian/NZ race times to database (skipped {skipped_count} non-Australian/NZ races)")
     
     def scrape_race_times(self, date_str: str = None):
         """

@@ -246,6 +246,51 @@ public class NcaaBasketballController : ControllerBase
     }
 
     /// <summary>
+    /// Get odds for a specific game by team names (for KenPom betting system)
+    /// </summary>
+    [HttpGet("odds")]
+    public async Task<IActionResult> GetGameOdds([FromQuery] string home, [FromQuery] string away)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(home) || string.IsNullOrEmpty(away))
+            {
+                return BadRequest(new { error = "Both home and away team parameters are required" });
+            }
+
+            _logger.LogInformation($"Getting odds for {away} @ {home}");
+            
+            // Use the existing odds service
+            var odds = await _oddsService.GetTodaysOddsAsync();
+            var oddsKey = $"{away}@{home}";
+            
+            if (odds.ContainsKey(oddsKey))
+            {
+                var gameOdds = odds[oddsKey];
+                var result = new
+                {
+                    home_team = home,
+                    away_team = away,
+                    home_moneyline_odds = gameOdds.HomeOdds,
+                    away_moneyline_odds = gameOdds.AwayOdds,
+                    timestamp = DateTime.UtcNow
+                };
+                return Ok(result);
+            }
+            else
+            {
+                _logger.LogWarning($"No odds found for {away} @ {home}");
+                return NotFound(new { error = $"No odds available for {away} @ {home}" });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Error getting game odds: {ex.Message}");
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Find Betfair market ID for a game by team names
     /// </summary>
     [HttpGet("find-market")]

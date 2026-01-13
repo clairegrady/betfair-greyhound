@@ -99,27 +99,33 @@ builder.Services.AddSingleton(new NcaaBasketballDb(connectionString));
 builder.Services.AddScoped<CompetitionAutomationService>();
 builder.Services.AddScoped<MarketAutomationService>();
 builder.Services.AddScoped<EventAutomationService>();
-// builder.Services.AddScoped<GreyhoundAutomationService>((provider) =>
-// {
-//     var greyhoundMarketApiService = provider.GetRequiredService<GreyhoundMarketApiService>();
-//     var listMarketCatalogueDb = provider.GetRequiredService<ListMarketCatalogueDb>();
-//     var marketBookDb = provider.GetRequiredService<MarketBookDb>();
-//     var eventDb = provider.GetRequiredService<EventDb2>();
-//     return new GreyhoundAutomationService(greyhoundMarketApiService, listMarketCatalogueDb, marketBookDb, eventDb);
-// });
-builder.Services.AddSingleton<HorseRacingAutomationService>();
 
 // Register greyhound services
-// builder.Services.AddScoped<GreyhoundResultsService>();
-// builder.Services.AddScoped<GreyhoundMarketApiService>((provider) =>
-// {
-//     var baseService = provider.GetRequiredService<IMarketApiService>();
-//     var logger = provider.GetRequiredService<ILogger<GreyhoundMarketApiService>>();
-//     var httpClient = provider.GetRequiredService<HttpClient>();
-//     var authService = provider.GetRequiredService<BetfairAuthService>();
-//     var settings = provider.GetRequiredService<IOptions<EndpointSettings>>();
-//     return new GreyhoundMarketApiService(baseService, logger, httpClient, authService, settings);
-// });
+builder.Services.AddScoped<GreyhoundMarketApiService>((provider) =>
+{
+    var baseService = provider.GetRequiredService<IMarketApiService>();
+    var logger = provider.GetRequiredService<ILogger<GreyhoundMarketApiService>>();
+    var httpClient = provider.GetRequiredService<HttpClient>();
+    var authService = provider.GetRequiredService<BetfairAuthService>();
+    var settings = provider.GetRequiredService<IOptions<EndpointSettings>>();
+    return new GreyhoundMarketApiService(baseService, logger, httpClient, authService, settings);
+});
+Console.WriteLine("✅ Registered GreyhoundMarketApiService");
+
+builder.Services.AddScoped<GreyhoundAutomationService>((provider) =>
+{
+    var greyhoundMarketApiService = provider.GetRequiredService<GreyhoundMarketApiService>();
+    var listMarketCatalogueDb = provider.GetRequiredService<ListMarketCatalogueDb>();
+    var marketBookDb = provider.GetRequiredService<MarketBookDb>();
+    var eventDb = provider.GetRequiredService<EventDb2>();
+    return new GreyhoundAutomationService(greyhoundMarketApiService, listMarketCatalogueDb, marketBookDb, eventDb);
+});
+Console.WriteLine("✅ Registered GreyhoundAutomationService");
+
+builder.Services.AddScoped<GreyhoundResultsService>();
+Console.WriteLine("✅ Registered GreyhoundResultsService");
+
+builder.Services.AddSingleton<HorseRacingAutomationService>();
 //builder.Services.AddScoped<MarketBackgroundWorker>();
 
 // Register Stream API services
@@ -141,6 +147,8 @@ builder.Services.AddHostedService<MarketBackgroundWorker>();
 Console.WriteLine("✅ Registered MarketBackgroundWorker");
 builder.Services.AddHostedService<HorseRacingStartupService>();
 Console.WriteLine("✅ Registered HorseRacingStartupService");
+builder.Services.AddHostedService<GreyhoundBackgroundWorker>();
+Console.WriteLine("✅ Registered GreyhoundBackgroundWorker");
 builder.Services.AddHostedService<StreamApiBackgroundWorker>();
 Console.WriteLine("✅ Registered StreamApiBackgroundWorker");
 builder.Services.AddHostedService<NcaaBasketballBackgroundService>();

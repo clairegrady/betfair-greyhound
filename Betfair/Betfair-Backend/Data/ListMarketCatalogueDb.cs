@@ -92,5 +92,46 @@ public class ListMarketCatalogueDb
         // If we get here, all retries failed
         throw new Exception("Failed to insert market catalogues after multiple retries due to database lock");
     }
+    
+    public async Task<MarketCatalogue?> GetMarketCatalogueByMarketId(string marketId)
+    {
+        using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+            SELECT MarketId, MarketName, EventName, OpenDate, EventId
+            FROM MarketCatalogue 
+            WHERE MarketId = $MarketId";
+        command.Parameters.AddWithValue("$MarketId", marketId);
+        
+        using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            return null;
+        }
+        
+        var catalogue = new MarketCatalogue
+        {
+            MarketId = reader.GetString(0),
+            MarketName = !reader.IsDBNull(1) ? reader.GetString(1) : null,
+            Event = new Models.Event.Event
+            {
+                Name = !reader.IsDBNull(2) ? reader.GetString(2) : null,
+                OpenDate = !reader.IsDBNull(3) ? DateTime.Parse(reader.GetString(3)) : null,
+                Id = !reader.IsDBNull(4) ? reader.GetString(4) : null
+            },
+            Runners = new List<Models.Runner.RunnerDescription>()
+        };
+        
+        // Runners are stored in the in-memory catalogue, not in a separate table
+        // The marketCatalogues passed to InsertMarketsIntoDatabase contain runners
+        // but we only save the market-level data to the database
+        // 
+        // Solution: We need to get runner names directly from the Betfair API response
+        // when processing market books, not from the database
+        
+        return catalogue;
+    }
 }
 

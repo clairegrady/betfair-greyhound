@@ -19,11 +19,11 @@
         </library>
       </libraries>
     </data-source>
-    <data-source source="LOCAL" name="race_times" uuid="42154172-1fac-4e38-bafd-c03e0e2202fb">
+    <data-source source="LOCAL" name="race_info" uuid="42154172-1fac-4e38-bafd-c03e0e2202fb">
       <driver-ref>sqlite.xerial</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
-      <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/../horse-racing-predictor/race_times.db</jdbc-url>
+      <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/../horse-racing-predictor/race_info.db</jdbc-url>
       <jdbc-additional-properties>
         <property name="com.intellij.clouds.kubernetes.db.enabled" value="false" />
       </jdbc-additional-properties>
@@ -54,6 +54,14 @@
       <configured-by-url>true</configured-by-url>
       <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
       <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/../horse-racing-predictor/horse_racing_ml.db</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
+    <data-source source="LOCAL" name="paper_trades_greyhounds.db" uuid="77890c76-3e49-4e56-b2f3-839257fdd172">
+      <driver-ref>sqlite.xerial</driver-ref>
+      <synchronize>true</synchronize>
+      <configured-by-url>true</configured-by-url>
+      <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
+      <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/../greyhound-predictor/paper_trades_greyhounds.db</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
   </component>

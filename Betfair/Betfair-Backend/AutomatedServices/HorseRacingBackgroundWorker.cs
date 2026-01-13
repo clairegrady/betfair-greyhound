@@ -52,15 +52,15 @@ namespace Betfair.AutomatedServices
                     _logger.LogDebug("📅 Fetching horse racing events...");
                     var eventList = await _eventAutomationService.FetchAndStoreListOfEventsAsync(new List<string> { "7" });
                     
-                    // Filter for Australian thoroughbred racing ONLY (exclude harness/trotters)
+                    // Filter for Australian and NZ thoroughbred racing ONLY (exclude harness/trotters)
                     var auEventList = eventList
-                        .Where(e => e.Event.CountryCode == "AU")
+                        .Where(e => e.Event.CountryCode == "AU" || e.Event.CountryCode == "NZ")
                         .Where(e => !e.Event.Name.Contains("(Pace)", StringComparison.OrdinalIgnoreCase))
                         .Where(e => !e.Event.Name.Contains("Pace", StringComparison.OrdinalIgnoreCase))
                         .Where(e => !e.Event.Name.Contains("Trots", StringComparison.OrdinalIgnoreCase))
                         .Where(e => !e.Event.Name.Contains("Harness", StringComparison.OrdinalIgnoreCase))
                         .ToList();
-                    _logger.LogInformation("📊 Found {EventCount} AU thoroughbred racing events (excluded harness/trotters)", auEventList.Count);
+                    _logger.LogInformation("📊 Found {EventCount} AU/NZ thoroughbred racing events (excluded harness/trotters)", auEventList.Count);
 
                     // 2. Convert filtered events to strings for market catalogue fetching
                     var eventStrings = auEventList.Select(e => e.Event.Id).ToList();
