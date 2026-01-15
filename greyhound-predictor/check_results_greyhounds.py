@@ -6,10 +6,11 @@ Updates finishing positions and calculates profit/loss
 import sqlite3
 import requests
 import json
+import csv
 from datetime import datetime, timedelta
 from typing import Dict, List
 
-DB_PATH = "/Users/clairegrady/RiderProjects/betfair/greyhound-predictor/paper_trades_greyhounds.db"
+DB_PATH = "/Users/clairegrady/RiderProjects/betfair/databases/greyhounds/paper_trades_greyhounds.db"
 BETFAIR_DB = "/Users/clairegrady/RiderProjects/betfair/Betfair/Betfair-Backend/betfairmarket.sqlite"
 BACKEND_URL = "http://localhost:5173"
 
@@ -376,6 +377,240 @@ def show_overall_stats():
     
     conn.close()
 
+def show_daily_stats():
+    """Show greyhound LAY betting statistics broken down by day"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Check if profit_loss column exists
+    cursor.execute("PRAGMA table_info(paper_trades)")
+    columns = [col[1] for col in cursor.fetchall()]
+    
+    if 'profit_loss' not in columns:
+        conn.close()
+        return
+    
+    # Get daily stats
+    cursor.execute("""
+        SELECT 
+            date,
+            COUNT(*) as total_bets,
+            SUM(CASE WHEN result = 'won' THEN 1 ELSE 0 END) as wins,
+            SUM(CASE WHEN result = 'lost' THEN 1 ELSE 0 END) as losses,
+            SUM(CASE WHEN result = 'pending' THEN 1 ELSE 0 END) as pending,
+            SUM(profit_loss) as total_pnl,
+            SUM(liability) as total_liability,
+            SUM(stake) as total_stake
+        FROM paper_trades
+        GROUP BY date
+        ORDER BY date DESC
+    """)
+    
+    rows = cursor.fetchall()
+    if rows:
+        print("\n" + "="*100)
+        print(f"📅 DAILY BREAKDOWN - GREYHOUND LAY BETTING")
+        print("="*100)
+        print(f"{'Date':<12} {'Bets':<6} {'Win Rate':<15} {'Liability':<14} {'P&L':<12} {'ROI':<8} {'Status':<10}")
+        print("-"*100)
+        
+        for row in rows:
+            date, bets, wins, losses, pending, pnl, liability, stake = row
+            settled = wins + losses
+            win_rate = wins/settled*100 if settled > 0 else 0
+            roi = pnl/liability*100 if liability and settled > 0 else 0
+            status = "✅ Complete" if pending == 0 else f"⏳ {pending} pending"
+            
+            # Only show P&L and ROI for settled days
+            if settled > 0:
+                print(f"{date:<12} {bets:<6} {wins}W-{losses}L ({win_rate:>4.1f}%)  ${liability:>10,.2f}   ${pnl:>+9.2f}  {roi:>+6.1f}%   {status}")
+            else:
+                print(f"{date:<12} {bets:<6} {'--':<15} ${'0.00':>10}   ${'0.00':>9}  {'--':>6}   {status}")
+        
+        print("="*100 + "\n")
+    
+    conn.close()
+
+def export_to_csv():
+    """Export all greyhound betting data to CSV files with 2 decimal places"""
+    import os
+    
+    # Create results directory if it doesn't exist
+    results_dir = "results-csvs"
+    if not os.path.exists(results_dir):
+        os.makedirs(results_dir)
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    
+    # Export all bets
+    print("\n📄 Exporting to CSV files...")
+    cursor.execute("""
+        SELECT 
+            id, date, venue, country, race_number, market_id, selection_id,
+            dog_name, box_number, position_in_market, odds, stake, liability,
+            result, finishing_position, profit_loss, bsp, created_at
+        FROM paper_trades
+        WHERE date = ?
+        ORDER BY created_at DESC
+    """, (date_str,))
+    
+    csv_file = f"{results_dir}/greyhounds_all_bets_{date_str}.csv"
+    with open(csv_file, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['ID', 'Date', 'Venue', 'Country', 'Race', 'Market ID', 'Selection ID',
+                        'Dog Name', 'Box', 'Position', 'Odds', 'Stake', 'Liability',
+                        'Result', 'Finish Pos', 'P&L', 'BSP', 'Created At'])
+        
+        for row in cursor.fetchall():
+            # Round all decimal values to 2 places
+            formatted_row = list(row)
+            if formatted_row[10] is not None:  # odds
+                formatted_row[10] = round(float(formatted_row[10]), 2)
+            if formatted_row[11] is not None:  # stake
+                formatted_row[11] = round(float(formatted_row[11]), 2)
+            if formatted_row[12] is not None:  # liability
+                formatted_row[12] = round(float(formatted_row[12]), 2)
+            if formatted_row[15] is not None:  # profit_loss
+                formatted_row[15] = round(float(formatted_row[15]), 2)
+            if formatted_row[16] is not None:  # bsp
+                formatted_row[16] = round(float(formatted_row[16]), 2)
+            writer.writerow(formatted_row)
+    
+    print(f"   ✅ All bets: {csv_file}")
+    
+    # Export position breakdown
+    cursor.execute("""
+        SELECT 
+            position_in_market,
+            COUNT(*) as bets,
+            SUM(CASE WHEN result = 'won' THEN 1 ELSE 0 END) as wins,
+            SUM(CASE WHEN result = 'lost' THEN 1 ELSE 0 END) as losses,
+            SUM(CASE WHEN result = 'pending' THEN 1 ELSE 0 END) as pending,
+            AVG(odds) as avg_odds,
+            SUM(stake) as total_stake,
+            SUM(liability) as total_liability,
+            SUM(profit_loss) as pnl
+        FROM paper_trades
+        WHERE date = ?
+        GROUP BY position_in_market
+        ORDER BY position_in_market
+    """, (date_str,))
+    
+    csv_file = f"{results_dir}/greyhounds_by_position_{date_str}.csv"
+    with open(csv_file, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['Position', 'Total Bets', 'Wins', 'Losses', 'Pending', 
+                        'Win Rate %', 'Avg Odds', 'Total Stake', 'Total Liability', 'P&L', 'ROI %'])
+        
+        for row in cursor.fetchall():
+            pos, bets, wins, losses, pending, avg_odds, stake, liability, pnl = row
+            settled = wins + losses
+            win_rate = round(wins/settled*100, 2) if settled > 0 else 0
+            roi = round(pnl/liability*100, 2) if liability and settled > 0 else 0
+            
+            writer.writerow([
+                pos, bets, wins, losses, pending,
+                win_rate,
+                round(float(avg_odds or 0), 2),
+                round(float(stake or 0), 2),
+                round(float(liability or 0), 2),
+                round(float(pnl or 0), 2),
+                roi
+            ])
+    
+    print(f"   ✅ By position: {csv_file}")
+    
+    # Export daily breakdown
+    cursor.execute("""
+        SELECT 
+            date,
+            COUNT(*) as total_bets,
+            SUM(CASE WHEN result = 'won' THEN 1 ELSE 0 END) as wins,
+            SUM(CASE WHEN result = 'lost' THEN 1 ELSE 0 END) as losses,
+            SUM(CASE WHEN result = 'pending' THEN 1 ELSE 0 END) as pending,
+            AVG(odds) as avg_odds,
+            SUM(stake) as total_stake,
+            SUM(liability) as total_liability,
+            SUM(profit_loss) as total_pnl
+        FROM paper_trades
+        WHERE date = ?
+        GROUP BY date
+    """, (date_str,))
+    
+    csv_file = f"{results_dir}/greyhounds_by_day_{date_str}.csv"
+    with open(csv_file, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['Date', 'Total Bets', 'Wins', 'Losses', 'Pending',
+                        'Win Rate %', 'Avg Odds', 'Stake', 'Liability', 'P&L', 'ROI %'])
+        
+        for row in cursor.fetchall():
+            date, bets, wins, losses, pending, avg_odds, stake, liability, pnl = row
+            settled = wins + losses
+            win_rate = round(wins/settled*100, 2) if settled > 0 else 0
+            roi = round(pnl/liability*100, 2) if liability and settled > 0 else 0
+            
+            writer.writerow([
+                date, bets, wins, losses, pending,
+                win_rate,
+                round(float(avg_odds or 0), 2),
+                round(float(stake or 0), 2),
+                round(float(liability or 0), 2),
+                round(float(pnl or 0), 2),
+                roi
+            ])
+    
+    print(f"   ✅ By day: {csv_file}")
+    
+    # Export daily breakdown BY POSITION (new detailed view)
+    cursor.execute("""
+        SELECT 
+            date,
+            position_in_market,
+            COUNT(*) as bets,
+            SUM(CASE WHEN result = 'won' THEN 1 ELSE 0 END) as wins,
+            SUM(CASE WHEN result = 'lost' THEN 1 ELSE 0 END) as losses,
+            SUM(CASE WHEN result = 'pending' THEN 1 ELSE 0 END) as pending,
+            AVG(odds) as avg_odds,
+            SUM(stake) as total_stake,
+            SUM(liability) as total_liability,
+            SUM(profit_loss) as pnl
+        FROM paper_trades
+        WHERE date = ?
+        GROUP BY date, position_in_market
+        ORDER BY position_in_market
+    """, (date_str,))
+    
+    csv_file = f"{results_dir}/greyhounds_by_day_and_position_{date_str}.csv"
+    with open(csv_file, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['Date', 'Position', 'Bets', 'Wins', 'Losses', 'Pending', 'Win Rate %', 
+                        'Avg Odds', 'Total Stake', 'Total Liability', 'P&L', 'ROI %'])
+        
+        for row in cursor.fetchall():
+            date, pos, bets, wins, losses, pending, avg_odds, stake, liability, pnl = row
+            settled = wins + losses
+            win_rate = round(wins/settled*100, 2) if settled > 0 else 0
+            roi = round(pnl/liability*100, 2) if liability and settled > 0 else 0
+            
+            writer.writerow([
+                date, pos, bets, wins, losses, pending,
+                win_rate,
+                round(float(avg_odds or 0), 2),
+                round(float(stake or 0), 2),
+                round(float(liability or 0), 2),
+                round(float(pnl or 0), 2),
+                roi
+            ])
+    
+    print(f"   ✅ By day & position: {csv_file}\n")
+    
+    conn.close()
+
 if __name__ == "__main__":
     check_results()
     show_overall_stats()
+    show_daily_stats()
+    export_to_csv()

@@ -1,7 +1,7 @@
 """
 Greyhound Lay Betting - Position 1 (Favorite)
 Lays the FAVORITE in every greyhound race (odds ≤ 500)
-Bets placed 30 seconds before race start
+Bets placed 5 seconds before race start
 """
 
 import pandas as pd
@@ -16,10 +16,10 @@ from typing import Dict, List, Optional
 # Configuration
 POSITION_TO_LAY = 2  # Laying the FAVORITE
 MAX_ODDS = 500
-SECONDS_BEFORE_RACE = 30
+SECONDS_BEFORE_RACE = 5
 FLAT_STAKE = 10
 
-DB_PATH = "/Users/clairegrady/RiderProjects/betfair/greyhound-predictor/paper_trades_greyhounds.db"
+DB_PATH = "/Users/clairegrady/RiderProjects/betfair/databases/greyhounds/paper_trades_greyhounds.db"
 BETFAIR_DB = "/Users/clairegrady/RiderProjects/betfair/Betfair/Betfair-Backend/betfairmarket.sqlite"
 RACE_TIMES_DB = "/Users/clairegrady/RiderProjects/betfair/horse-racing-predictor/race_info.db"
 BACKEND_URL = "http://localhost:5173"
@@ -29,7 +29,7 @@ logging.basicConfig(
     level=logging.DEBUG,  # Changed to DEBUG for troubleshooting
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(f'/Users/clairegrady/RiderProjects/betfair/greyhound-predictor/lay_position_{POSITION_TO_LAY}.log'),
+        logging.FileHandler(f'/Users/clairegrady/RiderProjects/betfair/greyhound-predictor/logs/lay_position_{POSITION_TO_LAY}.log'),
         logging.StreamHandler()
     ]
 )
@@ -320,10 +320,25 @@ class GreyhoundLayBetting:
                 return
             
             # Sort by odds (ascending) to get favorites
-            sorted_runners = sorted(runners, key=lambda x: x['odds'])
+            sorted_runners = sorted(runners, key=lambda x: (x["odds"], x["selection_id"]))
             
             # Get the dog at our position
             target_dog = sorted_runners[POSITION_TO_LAY - 1]
+            
+            # Check for zero or invalid odds - DO NOT BET!
+
+            
+            if target_dog['odds'] <= 0:
+
+            
+                logger.error(f"❌ SKIPPING - Invalid odds {target_dog['odds']} for {target_dog.get('dog_name', target_dog.get('horse_name', 'Unknown'))} (Position {POSITION_TO_LAY})")
+
+            
+                return
+
+            
+            
+
             
             # Check max odds
             if target_dog['odds'] > MAX_ODDS:

@@ -77,6 +77,7 @@ class RaceTimesScraper:
             'Albury': 'Australia/Sydney',
             'Armidale': 'Australia/Sydney',
             'Ballina': 'Australia/Sydney',
+            'Beaumont': 'Australia/Sydney',
             'Canterbury': 'Australia/Sydney',  # Short form
             'Canterbury Park': 'Australia/Sydney',
             'Coffs Harbour': 'Australia/Sydney',
@@ -205,7 +206,8 @@ class RaceTimesScraper:
             'Saint-Cloud': 'Europe/Paris',
             
             # New Zealand
-            'Ellerslie': 'Pacific/Auckland',
+            'Ellerslie': 'Pacific/Auckland', 
+            'Riccarton Park': 'Pacific/Auckland',
             'Te Aroha': 'Pacific/Auckland',
             'Trentham': 'Pacific/Auckland',
             
@@ -276,6 +278,7 @@ class RaceTimesScraper:
             'Dubbo Racecourse': 'Dubbo',
             'Narromine Racecourse': 'Narromine',
             'Parkes Racecourse': 'Parkes',
+            'Pinjarra Scarpside': 'Pinjarra',
             'Forbes Racecourse': 'Forbes',
             'Cowra Racecourse': 'Cowra',
             'Young Racecourse': 'Young',

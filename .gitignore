@@ -94,3 +94,13 @@ models/
 *.sqlite3
 *.sqlite-wal
 *.sqlite-shm
+
+# Database backup and recovery files
+*.CORRUPTED_BACKUP_*
+*.CORRUPT_OLD
+recovery_dump.sql
+*.sql.dump
+
+# Log files and directories
+*.log
+logs/

@@ -137,15 +137,37 @@ namespace Betfair.AutomatedServices
             // Subscribe to orders
             await _streamApiService.SubscribeToOrdersAsync();
             
-            // Subscribe to PLACE markets for paper trading (15-20 mins before race start)
-            _logger.LogWarning("📊 Subscribing to PLACE markets for upcoming horse races...");
+            // Subscribe to WIN and PLACE markets for both Horse and Greyhound racing
+            _logger.LogWarning("📊 Subscribing to markets for upcoming races...");
+            
+            // Horse Racing - WIN markets
             await _streamApiService.SubscribeToMarketsAsync(
                 eventTypeIds: new List<string> { "7" }, // Horse Racing
-                marketTypes: new List<string> { "PLACE" }, // PLACE markets for paper trading
-                countryCodes: new List<string> { "AU" },
-                timeWindow: TimeSpan.FromMinutes(20) // Next 20 minutes
+                marketTypes: new List<string> { "WIN" },
+                countryCodes: new List<string> { "AU", "NZ" },
+                timeWindow: TimeSpan.FromMinutes(10)
             );
-            _logger.LogWarning("📊 PLACE market subscription sent successfully");
+            _logger.LogWarning("📊 Horse Racing WIN markets subscribed");
+            
+            // Horse Racing - PLACE markets
+            await _streamApiService.SubscribeToMarketsAsync(
+                eventTypeIds: new List<string> { "7" }, // Horse Racing
+                marketTypes: new List<string> { "PLACE" },
+                countryCodes: new List<string> { "AU", "NZ" },
+                timeWindow: TimeSpan.FromMinutes(10)
+            );
+            _logger.LogWarning("📊 Horse Racing PLACE markets subscribed");
+            
+            // Greyhound Racing - WIN markets
+            await _streamApiService.SubscribeToMarketsAsync(
+                eventTypeIds: new List<string> { "4339" }, // Greyhound Racing
+                marketTypes: new List<string> { "WIN" },
+                countryCodes: new List<string> { "AU", "NZ" },
+                timeWindow: TimeSpan.FromMinutes(10)
+            );
+            _logger.LogWarning("📊 Greyhound Racing WIN markets subscribed");
+            
+            _logger.LogWarning("✅ All market subscriptions sent successfully");
 
             // Start heartbeat timer
             _heartbeatTimer = new Timer(SendHeartbeat, null, 
@@ -173,13 +195,32 @@ namespace Betfair.AutomatedServices
                 {
                     try
                     {
-                        _logger.LogInformation("🔄 Refreshing PLACE market subscriptions for upcoming races...");
+                        _logger.LogInformation("🔄 Refreshing market subscriptions for upcoming races...");
+                        
+                        // Horse Racing - WIN
                         await _streamApiService.SubscribeToMarketsAsync(
-                            eventTypeIds: new List<string> { "7" }, // Horse Racing
-                            marketTypes: new List<string> { "PLACE" },
-                            countryCodes: new List<string> { "AU" },
-                            timeWindow: TimeSpan.FromMinutes(20) // Next 20 minutes
+                            eventTypeIds: new List<string> { "7" },
+                            marketTypes: new List<string> { "WIN" },
+                            countryCodes: new List<string> { "AU", "NZ" },
+                            timeWindow: TimeSpan.FromMinutes(10)
                         );
+                        
+                        // Horse Racing - PLACE
+                        await _streamApiService.SubscribeToMarketsAsync(
+                            eventTypeIds: new List<string> { "7" },
+                            marketTypes: new List<string> { "PLACE" },
+                            countryCodes: new List<string> { "AU", "NZ" },
+                            timeWindow: TimeSpan.FromMinutes(10)
+                        );
+                        
+                        // Greyhound Racing - WIN
+                        await _streamApiService.SubscribeToMarketsAsync(
+                            eventTypeIds: new List<string> { "4339" },
+                            marketTypes: new List<string> { "WIN" },
+                            countryCodes: new List<string> { "AU", "NZ" },
+                            timeWindow: TimeSpan.FromMinutes(10)
+                        );
+                        
                         lastSubscriptionRefresh = DateTime.UtcNow;
                         _logger.LogInformation("✅ Market subscriptions refreshed successfully");
                     }
@@ -249,19 +290,6 @@ namespace Betfair.AutomatedServices
 
         private void OnMarketChanged(object sender, MarketChangeEventArgs e)
         {
-            _logger.LogWarning($"🎯 MARKET CHANGE: MarketId={e.MarketId}, ChangeType={e.ChangeType}");
-            
-            // Log detailed market data for testing
-            if (e.Runners != null && e.Runners.Any())
-            {
-                foreach (var runner in e.Runners.Take(3)) // Log first 3 runners
-                {
-                    _logger.LogWarning($"  Runner {runner.SelectionId}: LTP={runner.LastTradedPrice}, " +
-                        $"BestBack={runner.BestAvailableToBack?.FirstOrDefault()?.Price}, " +
-                        $"BestLay={runner.BestAvailableToLay?.FirstOrDefault()?.Price}");
-                }
-            }
-            
             // Process market changes here
             // You can update your database with real-time market data
             // This is where you'd integrate with your existing market data handling
@@ -269,8 +297,6 @@ namespace Betfair.AutomatedServices
 
         private void OnOrderChanged(object sender, OrderChangeEventArgs e)
         {
-            _logger.LogInformation($"Order change received for {e.OrderId}: {e.ChangeType}");
-            
             // Process order changes here
             // Update your order status in the database
             // This is where you'd integrate with your existing order handling

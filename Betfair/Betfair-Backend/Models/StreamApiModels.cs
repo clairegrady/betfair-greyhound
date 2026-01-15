@@ -433,6 +433,9 @@ namespace Betfair.Models
         [JsonPropertyName("batb")]
         public List<List<double>> Batb { get; set; }
 
+        [JsonPropertyName("batl")]
+        public List<List<double>> Batl { get; set; }
+
         [JsonPropertyName("spb")]
         public List<List<double>> Spb { get; set; }
 
@@ -453,6 +456,7 @@ namespace Betfair.Models
         public List<List<double>> Spl { get; set; }
 
         [JsonPropertyName("spn")]
+        [JsonConverter(typeof(NaNSafeDoubleConverter))]
         public double? Spn { get; set; }
 
         [JsonPropertyName("spc")]
@@ -485,6 +489,9 @@ namespace Betfair.Models
         [JsonPropertyName("batb")]
         public List<List<double>> Batb { get; set; }
 
+        [JsonPropertyName("batl")]
+        public List<List<double>> Batl { get; set; }
+
         [JsonPropertyName("spb")]
         public List<List<double>> Spb { get; set; }
 
@@ -505,6 +512,7 @@ namespace Betfair.Models
         public List<List<double>> Spl { get; set; }
 
         [JsonPropertyName("spn")]
+        [JsonConverter(typeof(NaNSafeDoubleConverter))]
         public double? Spn { get; set; }
 
         [JsonPropertyName("spc")]

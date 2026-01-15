@@ -40,6 +40,10 @@ namespace Betfair.Services
         private string _pendingSessionToken;
         private readonly Dictionary<int, object> _pendingMessages = new();
 
+        // Throttling for real-time odds updates (marketId -> last update time)
+        private readonly Dictionary<string, DateTime> _lastOddsUpdate = new();
+        private readonly TimeSpan _oddsUpdateInterval = TimeSpan.FromSeconds(5);
+
         public bool IsConnected => _tcpClient?.Connected == true && _sslStream?.IsAuthenticated == true;
         public bool IsAuthenticated => _authenticated;
 
@@ -305,7 +309,6 @@ namespace Betfair.Services
         {
             try
             {
-                _logger.LogWarning($"Received message from Betfair: {message}");
                 using var jsonDoc = JsonDocument.Parse(message);
                 var root = jsonDoc.RootElement;
                 var op = root.GetProperty("op").GetString();
@@ -342,7 +345,6 @@ namespace Betfair.Services
                         break;
 
                     case "mcm": // Market Change Message
-                        _logger.LogWarning($"Processing Market Change Message: {message}");
                         var marketChangeMsg = JsonSerializer.Deserialize<MarketChangeMessage>(message);
                         ProcessMarketChangeMessage(marketChangeMsg);
                         break;
@@ -371,18 +373,13 @@ namespace Betfair.Services
         {
             try
             {
-                _logger.LogWarning($"Processing Market Change Message: {JsonSerializer.Serialize(message)}");
                 if (message?.MarketChanges == null) 
                 {
-                    _logger.LogWarning("MarketChanges is null, returning early");
                     return;
                 }
-                
-                _logger.LogWarning($"Found {message.MarketChanges.Count} market changes");
 
                 foreach (var marketChange in message.MarketChanges)
                 {
-                    _logger.LogWarning($"Processing market {marketChange.Id} with {marketChange.Rc?.Count ?? 0} runner changes");
                 
                     MarketChanged?.Invoke(this, new MarketChangeEventArgs
                     {
@@ -394,26 +391,45 @@ namespace Betfair.Services
 
                     if (marketChange.Rc != null)
                     {
-                        _logger.LogWarning($"Processing {marketChange.Rc.Count} runner changes for market {marketChange.Id}");
+                        // Check if we have real-time odds data (using Batb and Bdatl)
+                        bool hasOddsData = marketChange.Rc.Any(r => r.Batb != null || r.Bdatl != null);
+                        
+                        // Throttle real-time odds updates to prevent database overload
+                        bool shouldUpdate = false;
+                        lock (_lastOddsUpdate)
+                        {
+                            if (!_lastOddsUpdate.TryGetValue(marketChange.Id, out var lastUpdate) || 
+                                DateTime.UtcNow - lastUpdate >= _oddsUpdateInterval)
+                            {
+                                _lastOddsUpdate[marketChange.Id] = DateTime.UtcNow;
+                                shouldUpdate = true;
+                            }
+                        }
+                        
+                        if (shouldUpdate && hasOddsData)
+                        {
+                            // Store real-time odds to Greyhound MarketBook/HorseMarketBook
+                            _ = Task.Run(async () => 
+                            {
+                                try 
+                                {
+                                    await StoreRealTimeOddsAsync(marketChange);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogError(ex, $"❌ Error in StoreRealTimeOddsAsync: {ex.Message}");
+                                }
+                            });
+                        }
+                        
                         foreach (var runnerChange in marketChange.Rc)
                         {
-                            _logger.LogWarning($"Runner {runnerChange.Id}: Spn={runnerChange.Spn}, Spf={runnerChange.Spf}, Ltp={runnerChange.Ltp}");
                             // Store BSP projections if available (focus on Spn only) and runner is still active
                             if (runnerChange.Spn != null && IsRunnerActive(marketChange, runnerChange.Id))
                             {
-                                _logger.LogWarning($"BSP data found for runner {runnerChange.Id}: Spn={runnerChange.Spn}");
                                 _ = Task.Run(() => StoreBspProjectionAsync(marketChange.Id, runnerChange));
                             }
-                            else if (runnerChange.Spn != null)
-                            {
-                                _logger.LogWarning($"Skipping BSP data for scratched/removed runner {runnerChange.Id}: Spn={runnerChange.Spn}");
-                            }
-                            // Store LTP data if available
-                            if (runnerChange.Ltp != null)
-                            {
-                                _logger.LogWarning($"LTP data found for runner {runnerChange.Id}: Ltp={runnerChange.Ltp}");
-                                _ = Task.Run(() => StoreLtpDataAsync(marketChange.Id, runnerChange));
-                            }
+                            // LTP storage disabled - causes database locking and not needed for betting scripts
                         }
                     }
                 }
@@ -500,51 +516,94 @@ namespace Betfair.Services
         private async Task StoreBspProjectionAsync(string marketId, RunnerChange runnerChange)
         {
             await _dbSemaphore.WaitAsync();
-            try
+            
+            // Retry logic for database lock errors
+            int maxRetries = 3;
+            int retryDelayMs = 100;
+            
+            for (int attempt = 0; attempt < maxRetries; attempt++)
             {
-                _logger.LogWarning($"🔄 Storing BSP projection for market {marketId}, runner {runnerChange.Id}: Spn={runnerChange.Spn}, Spf={runnerChange.Spf}");
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                try
+                {
+                    // Only log on first attempt to reduce log spam
+                    if (attempt == 0)
+                    {
+                        _logger.LogDebug($"🔄 Storing BSP projection for market {marketId}, runner {runnerChange.Id}: Spn={runnerChange.Spn}");
+                    }
+                    
+                    using var connection = new SqliteConnection(_connectionString);
+                    await connection.OpenAsync();
+                    
+                    // Increase busy timeout to 60 seconds
+                    using (var timeoutCommand = connection.CreateCommand())
+                    {
+                        timeoutCommand.CommandText = "PRAGMA busy_timeout = 60000;";
+                        await timeoutCommand.ExecuteNonQueryAsync();
+                    }
 
-                var nearPrice = runnerChange.Spn;
-                var farPrice = (object)DBNull.Value; // Not using Spf anymore
-                var average = nearPrice; // Use Spn as the average BSP
+                    var nearPrice = runnerChange.Spn;
+                    var farPrice = (object)DBNull.Value; // Not using Spf anymore
+                    var average = nearPrice; // Use Spn as the average BSP
 
-                var insertQuery = @"
-                INSERT OR REPLACE INTO StreamBspProjections
-                (MarketId, SelectionId, RunnerName, NearPrice, FarPrice, Average, UpdatedAt)
-                VALUES
-                ($MarketId, $SelectionId, $RunnerName, $NearPrice, $FarPrice, $Average, $UpdatedAt)";
+                    var insertQuery = @"
+                    INSERT OR REPLACE INTO StreamBspProjections
+                    (MarketId, SelectionId, RunnerName, NearPrice, FarPrice, Average, UpdatedAt)
+                    VALUES
+                    ($MarketId, $SelectionId, $RunnerName, $NearPrice, $FarPrice, $Average, $UpdatedAt)";
 
-                using var command = new SqliteCommand(insertQuery, connection);
-                command.Parameters.AddWithValue("$MarketId", marketId);
-                command.Parameters.AddWithValue("$SelectionId", runnerChange.Id);
-                command.Parameters.AddWithValue("$RunnerName", $"Runner {runnerChange.Id}");
-                command.Parameters.AddWithValue("$NearPrice", nearPrice ?? (object)DBNull.Value);
-                command.Parameters.AddWithValue("$FarPrice", farPrice ?? (object)DBNull.Value);
-                command.Parameters.AddWithValue("$Average", average);
-                command.Parameters.AddWithValue("$UpdatedAt", DateTime.UtcNow);
+                    using var command = new SqliteCommand(insertQuery, connection);
+                    command.Parameters.AddWithValue("$MarketId", marketId);
+                    command.Parameters.AddWithValue("$SelectionId", runnerChange.Id);
+                    command.Parameters.AddWithValue("$RunnerName", $"Runner {runnerChange.Id}");
+                    command.Parameters.AddWithValue("$NearPrice", nearPrice ?? (object)DBNull.Value);
+                    command.Parameters.AddWithValue("$FarPrice", farPrice ?? (object)DBNull.Value);
+                    command.Parameters.AddWithValue("$Average", average);
+                    command.Parameters.AddWithValue("$UpdatedAt", DateTime.UtcNow);
 
-                var rowsAffected = await command.ExecuteNonQueryAsync();
-                _logger.LogWarning($"✅ Successfully stored BSP projection for market {marketId}, runner {runnerChange.Id}: Near={nearPrice}, Far={farPrice}, Avg={average} (Rows affected: {rowsAffected})");
+                    var rowsAffected = await command.ExecuteNonQueryAsync();
+                    
+                    // Only log successes on retry attempts or if it took multiple tries
+                    if (attempt > 0)
+                    {
+                        _logger.LogInformation($"✅ BSP stored after {attempt + 1} attempts: market {marketId}, runner {runnerChange.Id}");
+                    }
+                    
+                    _dbSemaphore.Release();
+                    return; // Success - exit
+                }
+                catch (SqliteException ex) when ((ex.SqliteErrorCode == 5 || ex.SqliteErrorCode == 6) && attempt < maxRetries - 1)
+                {
+                    // SQLite Error 5 = database locked, Error 6 = table locked
+                    _logger.LogDebug($"⚠️ Database locked (attempt {attempt + 1}/{maxRetries}), retrying in {retryDelayMs}ms...");
+                    await Task.Delay(retryDelayMs);
+                    retryDelayMs *= 2; // Exponential backoff
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, $"❌ Error storing BSP projection for market {marketId}, runner {runnerChange.Id}: {ex.Message}");
+                    _dbSemaphore.Release();
+                    return; // Non-lock error - give up
+                }
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"❌ Error storing BSP projection for market {marketId}, runner {runnerChange.Id}: {ex.Message}");
-            }
-            finally
-            {
-                _dbSemaphore.Release();
-            }
+            
+            // All retries exhausted
+            _logger.LogWarning($"⚠️ Failed to store BSP after {maxRetries} attempts: market {marketId}, runner {runnerChange.Id}");
+            _dbSemaphore.Release();
         }
 
         private async Task StoreLtpDataAsync(string marketId, RunnerChange runnerChange)
         {
             try
             {
-                _logger.LogWarning($"🔄 Storing LTP data for market {marketId}, runner {runnerChange.Id}: Ltp={runnerChange.Ltp}");
                 using var connection = new SqliteConnection(_connectionString);
                 await connection.OpenAsync();
+                
+                // Set busy timeout to 30 seconds to handle concurrent writes
+                using (var timeoutCommand = connection.CreateCommand())
+                {
+                    timeoutCommand.CommandText = "PRAGMA busy_timeout = 30000;";
+                    await timeoutCommand.ExecuteNonQueryAsync();
+                }
 
                 var insertQuery = @"
                 INSERT OR REPLACE INTO StreamLtpData
@@ -568,12 +627,235 @@ namespace Betfair.Services
             }
         }
 
+        private async Task StoreRealTimeOddsAsync(MarketChange marketChange)
+        {
+            await _dbSemaphore.WaitAsync();
+            try
+            {
+                var marketId = marketChange.Id;
+                
+                // Determine event type - first try from market definition, then look up in database
+                string eventTypeId = marketChange.MarketDefinition?.EventTypeId;
+                
+                if (string.IsNullOrEmpty(eventTypeId))
+                {
+                    // Look up event type from database (check both tables)
+                    using var lookupConn = new SqliteConnection(_connectionString);
+                    await lookupConn.OpenAsync();
+                    
+                    using (var timeoutCommand = lookupConn.CreateCommand())
+                    {
+                        timeoutCommand.CommandText = "PRAGMA busy_timeout = 60000;";
+                        await timeoutCommand.ExecuteNonQueryAsync();
+                    }
+                    
+                    // Try greyhound table first
+                    var query = "SELECT COUNT(*) FROM GreyhoundMarketBook WHERE MarketId = $MarketId LIMIT 1";
+                    using (var command = new SqliteCommand(query, lookupConn))
+                    {
+                        command.Parameters.AddWithValue("$MarketId", marketId);
+                        var count = Convert.ToInt32(await command.ExecuteScalarAsync());
+                        if (count > 0)
+                        {
+                            eventTypeId = "4339"; // Greyhound
+                        }
+                    }
+                    
+                    // If not greyhound, try horse table
+                    if (string.IsNullOrEmpty(eventTypeId))
+                    {
+                        query = "SELECT COUNT(*) FROM HorseMarketBook WHERE MarketId = $MarketId LIMIT 1";
+                        using (var command = new SqliteCommand(query, lookupConn))
+                        {
+                            command.Parameters.AddWithValue("$MarketId", marketId);
+                            var count = Convert.ToInt32(await command.ExecuteScalarAsync());
+                            if (count > 0)
+                            {
+                                eventTypeId = "7"; // Horse
+                            }
+                        }
+                    }
+                }
+                
+                // Process both greyhound (4339) and horse (7) racing
+                if (eventTypeId != "4339" && eventTypeId != "7")
+                {
+                    return; // Skip non-racing markets
+                }
+                
+                string tableName = eventTypeId == "4339" ? "GreyhoundMarketBook" : "HorseMarketBook";
+                string runnerNameCol = eventTypeId == "4339" ? "RunnerName" : "RUNNER_NAME";
+                string boxCol = eventTypeId == "4339" ? "box" : "STALL_DRAW";
+                string runnerIdCol = eventTypeId == "4339" ? "RunnerId" : "RUNNER_ID";
+                
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                
+                using (var timeoutCommand = connection.CreateCommand())
+                {
+                    timeoutCommand.CommandText = "PRAGMA busy_timeout = 60000;";
+                    await timeoutCommand.ExecuteNonQueryAsync();
+                }
+
+                // Get existing runner metadata (names, venue, etc.) from database
+                var metadataQuery = $@"
+                    SELECT DISTINCT SelectionId, {runnerNameCol}, Venue, EventDate, EventName, {boxCol}, {runnerIdCol}
+                    FROM {tableName}
+                    WHERE MarketId = $MarketId AND {runnerNameCol} IS NOT NULL
+                    LIMIT 100";
+                
+                var runnerMetadata = new Dictionary<long, (string name, string venue, string eventDate, string eventName, double? box, string runnerId)>();
+                using (var metaCommand = new SqliteCommand(metadataQuery, connection))
+                {
+                    metaCommand.Parameters.AddWithValue("$MarketId", marketId);
+                    using var reader = await metaCommand.ExecuteReaderAsync();
+                    while (await reader.ReadAsync())
+                    {
+                        var selectionId = reader.GetInt64(0);
+                        var runnerName = reader.IsDBNull(1) ? null : reader.GetString(1);
+                        var venue = reader.IsDBNull(2) ? null : reader.GetString(2);
+                        var eventDate = reader.IsDBNull(3) ? null : reader.GetString(3);
+                        var eventName = reader.IsDBNull(4) ? null : reader.GetString(4);
+                        var box = reader.IsDBNull(5) ? (double?)null : reader.GetDouble(5);
+                        var runnerId = reader.IsDBNull(6) ? null : reader.GetString(6);
+                        
+                        if (runnerName != null)
+                            runnerMetadata[selectionId] = (runnerName, venue, eventDate, eventName, box, runnerId);
+                    }
+                }
+
+                // First, delete existing odds for this market to avoid stale data
+                var deleteQuery = $"DELETE FROM {tableName} WHERE MarketId = $MarketId AND PriceType IN ('AvailableToBack', 'AvailableToLay')";
+                using (var deleteCommand = new SqliteCommand(deleteQuery, connection))
+                {
+                    deleteCommand.Parameters.AddWithValue("$MarketId", marketId);
+                    await deleteCommand.ExecuteNonQueryAsync();
+                }
+
+                // Insert fresh odds from Stream API
+                var insertQuery = $@"
+                    INSERT INTO {tableName} 
+                    (MarketId, MarketName, SelectionId, Status, PriceType, Price, Size, {runnerNameCol}, Venue, EventDate, EventName, {boxCol}, {runnerIdCol})
+                    VALUES ($MarketId, $MarketName, $SelectionId, $Status, $PriceType, $Price, $Size, $RunnerName, $Venue, $EventDate, $EventName, $box, $RunnerId)";
+
+                int totalPricesStored = 0;
+                
+                foreach (var runnerChange in marketChange.Rc)
+                {
+                    if (!IsRunnerActive(marketChange, runnerChange.Id))
+                        continue;
+
+                    // Get runner metadata from database or fall back to market definition
+                    string runnerName;
+                    string venue;
+                    string eventDate;
+                    string eventName;
+                    double? boxNumber;
+                    string runnerId;
+                    
+                    if (runnerMetadata.TryGetValue(runnerChange.Id, out var metadata))
+                    {
+                        runnerName = metadata.name;
+                        venue = metadata.venue;
+                        eventDate = metadata.eventDate;
+                        eventName = metadata.eventName;
+                        boxNumber = metadata.box;
+                        runnerId = metadata.runnerId;
+                    }
+                    else
+                    {
+                        // Fallback to market definition
+                        var runnerDef = marketChange.MarketDefinition?.Runners?.FirstOrDefault(r => r.Id == runnerChange.Id);
+                        runnerName = $"Runner {runnerChange.Id}";
+                        venue = marketChange.MarketDefinition?.Venue;
+                        eventDate = marketChange.MarketDefinition?.MarketTime?.ToString("yyyy-MM-dd HH:mm:ss");
+                        eventName = marketChange.MarketDefinition?.Event?.Name;
+                        boxNumber = runnerChange.Hc;
+                        runnerId = runnerChange.Id.ToString();
+                    }
+                    
+                    var status = "ACTIVE";
+
+                    // Store Back prices (Batb)
+                    if (runnerChange.Batb != null)
+                    {
+                        foreach (var priceLevel in runnerChange.Batb)
+                        {
+                            if (priceLevel.Count >= 2)
+                            {
+                                using var cmd = new SqliteCommand(insertQuery, connection);
+                                cmd.Parameters.AddWithValue("$MarketId", marketId);
+                                cmd.Parameters.AddWithValue("$MarketName", marketChange.MarketDefinition?.MarketType ?? "WIN");
+                                cmd.Parameters.AddWithValue("$SelectionId", runnerChange.Id);
+                                cmd.Parameters.AddWithValue("$Status", status);
+                                cmd.Parameters.AddWithValue("$PriceType", "AvailableToBack");
+                                cmd.Parameters.AddWithValue("$Price", priceLevel[0]); // Price
+                                cmd.Parameters.AddWithValue("$Size", priceLevel[1]); // Size
+                                cmd.Parameters.AddWithValue("$RunnerName", runnerName ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("$Venue", venue ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("$EventDate", eventDate ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("$EventName", eventName ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("$box", boxNumber ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("$RunnerId", runnerId ?? (object)DBNull.Value);
+                                await cmd.ExecuteNonQueryAsync();
+                                totalPricesStored++;
+                            }
+                        }
+                    }
+
+                    // Store Lay prices (Bdatl - Best Displayed Available To Lay)
+                    if (runnerChange.Bdatl != null)
+                    {
+                        foreach (var priceLevel in runnerChange.Bdatl)
+                        {
+                            if (priceLevel.Count >= 2)
+                            {
+                                using var cmd = new SqliteCommand(insertQuery, connection);
+                                cmd.Parameters.AddWithValue("$MarketId", marketId);
+                                cmd.Parameters.AddWithValue("$MarketName", marketChange.MarketDefinition?.MarketType ?? "WIN");
+                                cmd.Parameters.AddWithValue("$SelectionId", runnerChange.Id);
+                                cmd.Parameters.AddWithValue("$Status", status);
+                                cmd.Parameters.AddWithValue("$PriceType", "AvailableToLay");
+                                cmd.Parameters.AddWithValue("$Price", priceLevel[0]); // Price
+                                cmd.Parameters.AddWithValue("$Size", priceLevel[1]); // Size
+                                cmd.Parameters.AddWithValue("$RunnerName", runnerName ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("$Venue", venue ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("$EventDate", eventDate ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("$EventName", eventName ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("$box", boxNumber ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("$RunnerId", runnerId ?? (object)DBNull.Value);
+                                await cmd.ExecuteNonQueryAsync();
+                                totalPricesStored++;
+                            }
+                        }
+                    }
+                }
+
+                _logger.LogInformation($"✅ Real-time odds stored for market {marketId} in {tableName} ({totalPricesStored} price points)");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"❌ Error storing real-time odds for market {marketChange.Id}: {ex.Message}");
+            }
+            finally
+            {
+                _dbSemaphore.Release();
+            }
+        }
+
         private async Task CreateStreamBspTableIfNotExistsAsync()
         {
             try
             {
                 using var connection = new SqliteConnection(_connectionString);
                 await connection.OpenAsync();
+                
+                // Set busy timeout to 30 seconds to handle concurrent writes
+                using (var timeoutCommand = connection.CreateCommand())
+                {
+                    timeoutCommand.CommandText = "PRAGMA busy_timeout = 30000;";
+                    await timeoutCommand.ExecuteNonQueryAsync();
+                }
 
                 var createTableQuery = @"
                 CREATE TABLE IF NOT EXISTS StreamBspProjections (

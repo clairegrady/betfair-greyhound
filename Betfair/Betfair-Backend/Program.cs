@@ -137,6 +137,12 @@ builder.Services.AddScoped<DatabaseService>(provider => new DatabaseService(conn
 // Register ResultsService
 builder.Services.AddScoped<IResultsService, ResultsService>();
 
+// Register Race Results Service (for exact finishing positions)
+builder.Services.AddScoped<Betfair.Services.RaceResults.IRaceResultsProvider, Betfair.Services.RaceResults.Providers.TheRacingApiProvider>();
+builder.Services.AddScoped<Betfair.Services.RaceResults.IRaceResultsProvider, Betfair.Services.RaceResults.Providers.RpScrapeProvider>();
+builder.Services.AddScoped<Betfair.Services.RaceResults.IRaceResultsService, Betfair.Services.RaceResults.CompositeRaceResultsService>();
+Console.WriteLine("✅ Registered RaceResultsService with TheRacingAPI and RPScrape providers");
+
 // Register NCAA Basketball services
 builder.Services.AddScoped<INcaaBasketballService, NcaaBasketballService>();
 builder.Services.AddHttpClient<INcaaOddsService, NcaaOddsService>();
@@ -151,10 +157,13 @@ builder.Services.AddHostedService<GreyhoundBackgroundWorker>();
 Console.WriteLine("✅ Registered GreyhoundBackgroundWorker");
 builder.Services.AddHostedService<StreamApiBackgroundWorker>();
 Console.WriteLine("✅ Registered StreamApiBackgroundWorker");
-builder.Services.AddHostedService<NcaaBasketballBackgroundService>();
-Console.WriteLine("✅ Registered NcaaBasketballBackgroundService");
-builder.Services.AddHostedService<NcaaBasketballMarketWorker>();
-Console.WriteLine("✅ Registered NcaaBasketballMarketWorker");
+// NCAA workers commented out - not currently in use
+// builder.Services.AddHostedService<NcaaBasketballBackgroundService>();
+// Console.WriteLine("✅ Registered NcaaBasketballBackgroundService");
+// builder.Services.AddHostedService<NcaaBasketballMarketWorker>();
+// Console.WriteLine("✅ Registered NcaaBasketballMarketWorker");
+builder.Services.AddHostedService<BspBackfillBackgroundWorker>();
+Console.WriteLine("✅ Registered BspBackfillBackgroundWorker");
 builder.Services.AddControllers();
 
 // Add Swagger

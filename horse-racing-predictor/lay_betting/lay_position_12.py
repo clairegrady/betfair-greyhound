@@ -1,7 +1,7 @@
 """
 Horse Racing Lay Betting - Position 1 (Favorite)
 Lays the FAVORITE in every horse race (odds ≤ 500)
-Bets placed 30 seconds before race start
+Bets placed 5 seconds before race start
 """
 
 import pandas as pd
@@ -16,10 +16,10 @@ from typing import Dict, List, Optional
 # Configuration
 POSITION_TO_LAY = 12  # Laying the FAVORITE
 MAX_ODDS = 500
-SECONDS_BEFORE_RACE = 30
+SECONDS_BEFORE_RACE = 5
 FLAT_STAKE = 10
 
-DB_PATH = "/Users/clairegrady/RiderProjects/betfair/horse-racing-predictor/paper_trades.db"
+DB_PATH = "/Users/clairegrady/RiderProjects/betfair/databases/horses/paper_trades_horses.db"
 BETFAIR_DB = "/Users/clairegrady/RiderProjects/betfair/Betfair/Betfair-Backend/betfairmarket.sqlite"
 RACE_TIMES_DB = "/Users/clairegrady/RiderProjects/betfair/horse-racing-predictor/race_info.db"
 BACKEND_URL = "http://localhost:5173"
@@ -268,9 +268,9 @@ class HorseLayBetting:
             
             cursor.execute("""
                 INSERT INTO paper_trades
-                (date, venue, country, race_number, market_id, selection_id, horse_name, box_number,
-                 position_in_market, odds, odds_taken, stake, liability, finishing_position, result, bet_type)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (date, venue, country, race_number, market_id, selection_id, horse_name, barrier_number,
+                 position_in_market, odds, stake, liability, finishing_position, result)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 datetime.now().strftime('%Y-%m-%d'),
                 race_info['venue'],
@@ -282,12 +282,10 @@ class HorseLayBetting:
                 horse.get('barrier'),  # Get barrier number from horse data
                 position,
                 horse['odds'],
-                horse['odds'],
                 FLAT_STAKE,
                 liability,
                 0,  # Will be updated later
-                'pending',
-                'LAY'
+                'pending'
             ))
             
             conn.commit()
@@ -321,10 +319,15 @@ class HorseLayBetting:
                 return
             
             # Sort by odds (ascending) to get favorites
-            sorted_runners = sorted(runners, key=lambda x: x['odds'])
+            sorted_runners = sorted(runners, key=lambda x: (x["odds"], x["selection_id"]))
             
             # Get the horse at our position
             target_horse = sorted_runners[POSITION_TO_LAY - 1]
+
+            # Check for zero or invalid odds - DO NOT BET!
+            if target_horse['odds'] <= 0:
+                logger.error(f"❌ SKIPPING - Invalid odds {target_horse['odds']} for {target_horse.get('horse_name', 'Unknown')} (Position {POSITION_TO_LAY})")
+                return
             
             # Check max odds
             if target_horse['odds'] > MAX_ODDS:
