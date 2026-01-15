@@ -502,6 +502,13 @@ public class NcaaBasketballDb
                     await walCommand.ExecuteNonQueryAsync();
                 }
 
+                // Set busy timeout to 30 seconds to handle concurrent writes
+                using (var timeoutCommand = connection.CreateCommand())
+                {
+                    timeoutCommand.CommandText = "PRAGMA busy_timeout = 30000;";
+                    await timeoutCommand.ExecuteNonQueryAsync();
+                }
+
                 // Create table if it doesn't exist
                 var createTableCmd = connection.CreateCommand();
                 createTableCmd.CommandText = @"

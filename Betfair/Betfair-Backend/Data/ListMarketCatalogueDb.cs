@@ -32,6 +32,13 @@ public class ListMarketCatalogueDb
                     await walCommand.ExecuteNonQueryAsync();
                 }
 
+                // Set busy timeout to 30 seconds to handle concurrent writes
+                using (var timeoutCommand = connection.CreateCommand())
+                {
+                    timeoutCommand.CommandText = "PRAGMA busy_timeout = 30000;";
+                    await timeoutCommand.ExecuteNonQueryAsync();
+                }
+
                 foreach (var marketCatalogue in marketCatalogues)
         {
             //Console.WriteLine($"MarketId: {marketCatalogue.MarketId}, MarketName: {marketCatalogue.MarketName}");
