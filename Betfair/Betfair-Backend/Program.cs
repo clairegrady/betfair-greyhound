@@ -209,7 +209,7 @@ try
 }
 catch (Exception ex)
 {
-    Console.WriteLine($"❌ FATAL: NCAA Basketball service failed:");
+    Console.WriteLine("❌ FATAL: NCAA Basketball service failed:");
     Console.WriteLine($"   Error: {ex.Message}");
     Console.WriteLine($"   Type: {ex.GetType().Name}");
     Console.WriteLine($"   Stack: {ex.StackTrace}");

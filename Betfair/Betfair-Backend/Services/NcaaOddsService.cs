@@ -133,7 +133,7 @@ public class NcaaOddsService : INcaaOddsService
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30)); // 30-second timeout
             var response = await _httpClient.GetAsync(url, cts.Token);
             
-            _logger.LogInformation($"📥 API Response: {response.StatusCode}");
+            //_logger.LogInformation($"📥 API Response: {response.StatusCode}");
             
             if (!response.IsSuccessStatusCode)
             {

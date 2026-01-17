@@ -1,6 +1,7 @@
 """
 Database Connection Helper
-Provides robust SQLite connections with proper concurrency handling
+Provides robust database connections for SQLite
+PostgreSQL implementation commented out for future use
 """
 
 import sqlite3
@@ -11,36 +12,66 @@ from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
+# ============================================================================
+# POSTGRESQL IMPLEMENTATION (COMMENTED OUT FOR FUTURE USE)
+# ============================================================================
+# import psycopg2
+# import psycopg2.extras
+# import psycopg2.pool
+#
+# PG_CONFIG = {
+#     'betfairmarket': {
+#         'host': 'localhost',
+#         'port': 5432,
+#         'database': 'betfairmarket',
+#         'user': 'clairegrady'
+#     },
+#     'betfair_trades': {
+#         'host': 'localhost',
+#         'port': 5432,
+#         'database': 'betfair_trades',
+#         'user': 'clairegrady'
+#     },
+#     'betfair_races': {
+#         'host': 'localhost',
+#         'port': 5432,
+#         'database': 'betfair_races',
+#         'user': 'clairegrady'
+#     }
+# }
+#
+# DB_PATH_MAPPING = {
+#     'betfairmarket.sqlite': 'betfairmarket',
+#     'live_trades_greyhounds.db': 'betfair_trades',
+#     'paper_trades_greyhounds.db': 'betfair_trades',
+#     'paper_trades_horses.db': 'betfair_trades',
+#     'race_info.db': 'betfair_races',
+#     'paper_trades_ncaa.db': 'betfairmarket',
+# }
+# ============================================================================
+
 
 def get_db_connection(db_path: str, timeout: float = 30.0) -> sqlite3.Connection:
     """
-    Create a SQLite connection with proper concurrency settings.
+    Create a SQLite database connection with optimizations.
     
     Args:
-        db_path: Path to the SQLite database
-        timeout: Timeout in seconds for database locks (default: 30)
+        db_path: Path to the SQLite database file
+        timeout: Timeout in seconds
     
     Returns:
-        sqlite3.Connection with WAL mode and busy_timeout enabled
+        SQLite connection object
     """
-    try:
-        # Connect with timeout
-        conn = sqlite3.connect(db_path, timeout=timeout)
-        
-        # Enable WAL mode for better concurrency
-        conn.execute("PRAGMA journal_mode=WAL")
-        
-        # Set busy timeout (in milliseconds)
-        conn.execute(f"PRAGMA busy_timeout = {int(timeout * 1000)}")
-        
-        # Enable foreign keys
-        conn.execute("PRAGMA foreign_keys = ON")
-        
-        return conn
-        
-    except Exception as e:
-        logger.error(f"Error connecting to database {db_path}: {e}")
-        raise
+    conn = sqlite3.connect(db_path, timeout=timeout, check_same_thread=False)
+    
+    # SQLite optimizations
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA synchronous=NORMAL;")
+    conn.execute("PRAGMA busy_timeout=60000;")
+    conn.execute("PRAGMA cache_size=-64000;")  # 64MB cache
+    
+    logger.debug(f"Connected to SQLite database: {db_path}")
+    return conn
 
 
 @contextmanager
@@ -49,7 +80,7 @@ def db_transaction(db_path: str, max_retries: int = 3, timeout: float = 30.0):
     Context manager for database transactions with retry logic.
     
     Usage:
-        with db_transaction('/path/to/db.sqlite') as conn:
+        with db_transaction('/path/to/db') as conn:
             cursor = conn.cursor()
             cursor.execute("INSERT INTO ...")
             # Transaction commits automatically on success
@@ -58,7 +89,7 @@ def db_transaction(db_path: str, max_retries: int = 3, timeout: float = 30.0):
     Args:
         db_path: Path to the SQLite database
         max_retries: Maximum number of retry attempts
-        timeout: Timeout in seconds for database locks
+        timeout: Timeout in seconds
     """
     conn = None
     last_error = None
@@ -66,7 +97,6 @@ def db_transaction(db_path: str, max_retries: int = 3, timeout: float = 30.0):
     for attempt in range(max_retries):
         try:
             conn = get_db_connection(db_path, timeout)
-            conn.execute("BEGIN IMMEDIATE")  # Acquire write lock immediately
             
             yield conn
             
@@ -118,10 +148,10 @@ def execute_with_retry(db_path: str, query: str, params: tuple = (), max_retries
         query: SQL query to execute
         params: Query parameters
         max_retries: Maximum number of retry attempts
-        timeout: Timeout in seconds for database locks
+        timeout: Timeout in seconds
     
     Returns:
-        Cursor with query results
+        Query results or None
     """
     last_error = None
     
@@ -167,41 +197,27 @@ def execute_with_retry(db_path: str, query: str, params: tuple = (), max_retries
 
 def convert_database_to_wal(db_path: str):
     """
-    Convert a database from DELETE/TRUNCATE mode to WAL mode.
+    Convert a SQLite database to WAL mode for better concurrency.
     
     Args:
-        db_path: Path to the SQLite database
+        db_path: Path to the SQLite database file
     """
     try:
         conn = sqlite3.connect(db_path)
-        
-        # Check current mode
-        cursor = conn.cursor()
-        cursor.execute("PRAGMA journal_mode")
-        current_mode = cursor.fetchone()[0]
-        
-        if current_mode.lower() != 'wal':
-            logger.info(f"Converting {db_path} from {current_mode} to WAL mode...")
-            cursor.execute("PRAGMA journal_mode=WAL")
-            new_mode = cursor.fetchone()[0]
-            logger.info(f"✅ Database converted to {new_mode} mode")
-        else:
-            logger.info(f"✅ Database already in WAL mode")
-        
+        conn.execute("PRAGMA journal_mode=WAL;")
         conn.close()
-        
+        logger.info(f"Converted {db_path} to WAL mode")
     except Exception as e:
-        logger.error(f"Error converting database to WAL mode: {e}")
-        raise
+        logger.error(f"Error converting {db_path} to WAL: {e}")
 
 
 if __name__ == "__main__":
     # Test the helper functions
     import sys
     
-    if len(sys.argv) > 1:
-        db_path = sys.argv[1]
-        print(f"Converting {db_path} to WAL mode...")
-        convert_database_to_wal(db_path)
-    else:
-        print("Usage: python db_connection_helper.py /path/to/database.db")
+    print("=" * 60)
+    print("DATABASE CONNECTION HELPER - SQLite Mode")
+    print("=" * 60)
+    print()
+    print("Using SQLite with WAL mode for improved concurrency")
+    print("PostgreSQL implementation available but commented out")

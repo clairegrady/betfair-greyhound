@@ -394,6 +394,7 @@ public class MarketBookDb
 
         // Example: "3. Chubby Sammy" -> box=3, name="Chubby Sammy"
         var match = System.Text.RegularExpressions.Regex.Match(runnerName, @"^(\d+)\.\s*(.+)$");
+
         if (match.Success && int.TryParse(match.Groups[1].Value, out int boxNum))
         {
             return (boxNum, match.Groups[2].Value.Trim());

@@ -145,9 +145,9 @@ namespace Betfair.Services
             };
 
             var json = JsonSerializer.Serialize(message);
-            _logger.LogWarning($"Sending market subscription: {json}");
+            _logger.LogWarning("Sending market subscription: {json}", json);
             await SendMessageAsync(message);
-            _logger.LogInformation($"Subscribed to market {marketId} with BSP projections");
+            _logger.LogInformation("Subscribed to market {marketId} with BSP projections", marketId);
         }
 
         public async Task SubscribeToMarketsAsync(List<string> eventTypeIds = null, List<string> marketTypes = null, List<string> countryCodes = null, TimeSpan? timeWindow = null)
@@ -197,9 +197,11 @@ namespace Betfair.Services
             };
 
             var json = JsonSerializer.Serialize(message);
-            _logger.LogWarning($"Sending market subscription with filters: {json}");
+            _logger.LogWarning("Sending market subscription with filters: {json}", json);
             await SendMessageAsync(message);
-            _logger.LogInformation($"Subscribed to markets with filters: EventTypes={string.Join(",", eventTypeIds ?? new List<string>())}, MarketTypes={string.Join(",", marketTypes ?? new List<string>())}");
+            _logger.LogInformation("Subscribed to markets with filters: EventTypes={EventTypes}, MarketTypes={MarketTypes}", 
+                string.Join(",", eventTypeIds ?? new List<string>()), 
+                string.Join(",", marketTypes ?? new List<string>()));
         }
 
         public async Task SubscribeToOrdersAsync()
@@ -218,7 +220,7 @@ namespace Betfair.Services
 
         public async Task UnsubscribeFromMarketAsync(string marketId)
         {
-            _logger.LogInformation($"Unsubscribed from market {marketId}");
+            _logger.LogInformation("Unsubscribed from market {marketId}", marketId);
             await Task.CompletedTask;
         }
 
@@ -247,7 +249,7 @@ namespace Betfair.Services
                 await _streamWriter.WriteLineAsync(json);
                 await _streamWriter.FlushAsync();
 
-                _logger.LogInformation($"Authentication message sent: Id={authMessage.Id}");
+                _logger.LogInformation("Authentication message sent: Id={authMessageId}", authMessage.Id);
 
                 // Wait for response (timeout 10s)
                 var tcs = new TaskCompletionSource<AuthenticationResponse>();
@@ -318,7 +320,7 @@ namespace Betfair.Services
                 {
                     case "connection":
                         var connectionMsg = JsonSerializer.Deserialize<ConnectionMessage>(message);
-                        _logger.LogInformation($"Connection established: {connectionMsg.ConnectionId}");
+                        _logger.LogInformation("Connection established: {connectionId}", connectionMsg?.ConnectionId);
                         _connectionReceived = true;
                         _connectionSemaphore.Release();
 
@@ -359,7 +361,7 @@ namespace Betfair.Services
                         break;
 
                     default:
-                        _logger.LogWarning($"Unknown message type: {op}");
+                        _logger.LogWarning("Unknown message type: {op}", op);
                         break;
                 }
             }
@@ -498,18 +500,18 @@ namespace Betfair.Services
         {
             if (marketChange.MarketDefinition?.Runners == null)
             {
-                _logger.LogWarning($"No market definition runners found for runner {runnerId}, assuming active");
+                _logger.LogWarning("No market definition runners found for runner {runnerId}, assuming active", runnerId);
                 return true; // If no market definition, assume active
             }
             
             var runner = marketChange.MarketDefinition.Runners.FirstOrDefault(r => r.Id == runnerId);
             if (runner == null)
             {
-                _logger.LogWarning($"Runner {runnerId} not found in market definition, assuming active");
+                _logger.LogWarning("Runner {runnerId} not found in market definition, assuming active", runnerId);
                 return true; // If runner not found in definition, assume active
             }
             
-            _logger.LogWarning($"Runner {runnerId} status: {runner.Status}");
+            _logger.LogWarning("Runner {runnerId} status: {runnerStatus}", runnerId, runner.Status);
             return runner.Status == "ACTIVE";
         }
 
@@ -549,23 +551,23 @@ namespace Betfair.Services
                     INSERT OR REPLACE INTO StreamBspProjections
                     (MarketId, SelectionId, RunnerName, NearPrice, FarPrice, Average, UpdatedAt)
                     VALUES
-                    ($MarketId, $SelectionId, $RunnerName, $NearPrice, $FarPrice, $Average, $UpdatedAt)";
+                    (@MarketId, @SelectionId, @RunnerName, @NearPrice, @FarPrice, @Average, @UpdatedAt)";
 
                     using var command = new SqliteCommand(insertQuery, connection);
-                    command.Parameters.AddWithValue("$MarketId", marketId);
-                    command.Parameters.AddWithValue("$SelectionId", runnerChange.Id);
-                    command.Parameters.AddWithValue("$RunnerName", $"Runner {runnerChange.Id}");
-                    command.Parameters.AddWithValue("$NearPrice", nearPrice ?? (object)DBNull.Value);
-                    command.Parameters.AddWithValue("$FarPrice", farPrice ?? (object)DBNull.Value);
-                    command.Parameters.AddWithValue("$Average", average);
-                    command.Parameters.AddWithValue("$UpdatedAt", DateTime.UtcNow);
+                    command.Parameters.AddWithValue("@MarketId", marketId);
+                    command.Parameters.AddWithValue("@SelectionId", runnerChange.Id);
+                    command.Parameters.AddWithValue("@RunnerName", $"Runner {runnerChange.Id}");
+                    command.Parameters.AddWithValue("@NearPrice", nearPrice ?? (object)DBNull.Value);
+                    command.Parameters.AddWithValue("@FarPrice", farPrice ?? (object)DBNull.Value);
+                    command.Parameters.AddWithValue("@Average", average);
+                    command.Parameters.AddWithValue("@UpdatedAt", DateTime.UtcNow);
 
                     var rowsAffected = await command.ExecuteNonQueryAsync();
                     
                     // Only log successes on retry attempts or if it took multiple tries
                     if (attempt > 0)
                     {
-                        _logger.LogInformation($"✅ BSP stored after {attempt + 1} attempts: market {marketId}, runner {runnerChange.Id}");
+                        _logger.LogInformation("✅ BSP stored after {attempts} attempts: market {marketId}, runner {runnerId}", attempt + 1, marketId, runnerChange.Id);
                     }
                     
                     _dbSemaphore.Release();
@@ -587,7 +589,7 @@ namespace Betfair.Services
             }
             
             // All retries exhausted
-            _logger.LogWarning($"⚠️ Failed to store BSP after {maxRetries} attempts: market {marketId}, runner {runnerChange.Id}");
+            _logger.LogWarning("⚠️ Failed to store BSP after {maxRetries} attempts: market {marketId}, runner {runnerId}", maxRetries, marketId, runnerChange.Id);
             _dbSemaphore.Release();
         }
 
@@ -609,17 +611,17 @@ namespace Betfair.Services
                 INSERT OR REPLACE INTO StreamLtpData
                 (MarketId, SelectionId, RunnerName, LastTradedPrice, UpdatedAt)
                 VALUES
-                ($MarketId, $SelectionId, $RunnerName, $LastTradedPrice, $UpdatedAt)";
+                (@MarketId, @SelectionId, @RunnerName, @LastTradedPrice, @UpdatedAt)";
 
                 using var command = new SqliteCommand(insertQuery, connection);
-                command.Parameters.AddWithValue("$MarketId", marketId);
-                command.Parameters.AddWithValue("$SelectionId", runnerChange.Id);
-                command.Parameters.AddWithValue("$RunnerName", $"Runner {runnerChange.Id}");
-                command.Parameters.AddWithValue("$LastTradedPrice", runnerChange.Ltp ?? (object)DBNull.Value);
-                command.Parameters.AddWithValue("$UpdatedAt", DateTime.UtcNow);
+                command.Parameters.AddWithValue("@MarketId", marketId);
+                command.Parameters.AddWithValue("@SelectionId", runnerChange.Id);
+                command.Parameters.AddWithValue("@RunnerName", $"Runner {runnerChange.Id}");
+                command.Parameters.AddWithValue("@LastTradedPrice", runnerChange.Ltp ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@UpdatedAt", DateTime.UtcNow);
 
                 var rowsAffected = await command.ExecuteNonQueryAsync();
-                _logger.LogWarning($"✅ Successfully stored LTP data for market {marketId}, runner {runnerChange.Id}: Ltp={runnerChange.Ltp} (Rows affected: {rowsAffected})");
+                _logger.LogWarning("✅ Successfully stored LTP data for market {marketId}, runner {runnerId}: Ltp={ltp} (Rows affected: {rowsAffected})", marketId, runnerChange.Id, runnerChange.Ltp, rowsAffected);
             }
             catch (Exception ex)
             {
@@ -650,10 +652,10 @@ namespace Betfair.Services
                     }
                     
                     // Try greyhound table first
-                    var query = "SELECT COUNT(*) FROM GreyhoundMarketBook WHERE MarketId = $MarketId LIMIT 1";
+                    var query = "SELECT COUNT(*) FROM GreyhoundMarketBook WHERE MarketId = @MarketId LIMIT 1";
                     using (var command = new SqliteCommand(query, lookupConn))
                     {
-                        command.Parameters.AddWithValue("$MarketId", marketId);
+                        command.Parameters.AddWithValue("@MarketId", marketId);
                         var count = Convert.ToInt32(await command.ExecuteScalarAsync());
                         if (count > 0)
                         {
@@ -664,10 +666,10 @@ namespace Betfair.Services
                     // If not greyhound, try horse table
                     if (string.IsNullOrEmpty(eventTypeId))
                     {
-                        query = "SELECT COUNT(*) FROM HorseMarketBook WHERE MarketId = $MarketId LIMIT 1";
+                        query = "SELECT COUNT(*) FROM HorseMarketBook WHERE MarketId = @MarketId LIMIT 1";
                         using (var command = new SqliteCommand(query, lookupConn))
                         {
-                            command.Parameters.AddWithValue("$MarketId", marketId);
+                            command.Parameters.AddWithValue("@MarketId", marketId);
                             var count = Convert.ToInt32(await command.ExecuteScalarAsync());
                             if (count > 0)
                             {
@@ -701,13 +703,13 @@ namespace Betfair.Services
                 var metadataQuery = $@"
                     SELECT DISTINCT SelectionId, {runnerNameCol}, Venue, EventDate, EventName, {boxCol}, {runnerIdCol}
                     FROM {tableName}
-                    WHERE MarketId = $MarketId AND {runnerNameCol} IS NOT NULL
+                    WHERE MarketId = @MarketId AND {runnerNameCol} IS NOT NULL
                     LIMIT 100";
                 
                 var runnerMetadata = new Dictionary<long, (string name, string venue, string eventDate, string eventName, double? box, string runnerId)>();
                 using (var metaCommand = new SqliteCommand(metadataQuery, connection))
                 {
-                    metaCommand.Parameters.AddWithValue("$MarketId", marketId);
+                    metaCommand.Parameters.AddWithValue("@MarketId", marketId);
                     using var reader = await metaCommand.ExecuteReaderAsync();
                     while (await reader.ReadAsync())
                     {
@@ -736,7 +738,7 @@ namespace Betfair.Services
                 var insertQuery = $@"
                     INSERT INTO {tableName} 
                     (MarketId, MarketName, SelectionId, Status, PriceType, Price, Size, {runnerNameCol}, Venue, EventDate, EventName, {boxCol}, {runnerIdCol})
-                    VALUES ($MarketId, $MarketName, $SelectionId, $Status, $PriceType, $Price, $Size, $RunnerName, $Venue, $EventDate, $EventName, $box, $RunnerId)";
+                    VALUES (@MarketId, @MarketName, @SelectionId, @Status, @PriceType, @Price, @Size, @RunnerName, @Venue, @EventDate, @EventName, @box, @RunnerId)";
 
                 int totalPricesStored = 0;
                 
@@ -784,19 +786,19 @@ namespace Betfair.Services
                             if (priceLevel.Count >= 2)
                             {
                                 using var cmd = new SqliteCommand(insertQuery, connection);
-                                cmd.Parameters.AddWithValue("$MarketId", marketId);
-                                cmd.Parameters.AddWithValue("$MarketName", marketChange.MarketDefinition?.MarketType ?? "WIN");
-                                cmd.Parameters.AddWithValue("$SelectionId", runnerChange.Id);
-                                cmd.Parameters.AddWithValue("$Status", status);
-                                cmd.Parameters.AddWithValue("$PriceType", "AvailableToBack");
-                                cmd.Parameters.AddWithValue("$Price", priceLevel[0]); // Price
-                                cmd.Parameters.AddWithValue("$Size", priceLevel[1]); // Size
-                                cmd.Parameters.AddWithValue("$RunnerName", runnerName ?? (object)DBNull.Value);
-                                cmd.Parameters.AddWithValue("$Venue", venue ?? (object)DBNull.Value);
-                                cmd.Parameters.AddWithValue("$EventDate", eventDate ?? (object)DBNull.Value);
-                                cmd.Parameters.AddWithValue("$EventName", eventName ?? (object)DBNull.Value);
-                                cmd.Parameters.AddWithValue("$box", boxNumber ?? (object)DBNull.Value);
-                                cmd.Parameters.AddWithValue("$RunnerId", runnerId ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("@MarketId", marketId);
+                                cmd.Parameters.AddWithValue("@MarketName", marketChange.MarketDefinition?.MarketType ?? "WIN");
+                                cmd.Parameters.AddWithValue("@SelectionId", runnerChange.Id);
+                                cmd.Parameters.AddWithValue("@Status", status);
+                                cmd.Parameters.AddWithValue("@PriceType", "AvailableToBack");
+                                cmd.Parameters.AddWithValue("@Price", priceLevel[0]); // Price
+                                cmd.Parameters.AddWithValue("@Size", priceLevel[1]); // Size
+                                cmd.Parameters.AddWithValue("@RunnerName", runnerName ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("@Venue", venue ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("@EventDate", eventDate ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("@EventName", eventName ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("@box", boxNumber ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("@RunnerId", runnerId ?? (object)DBNull.Value);
                                 await cmd.ExecuteNonQueryAsync();
                                 totalPricesStored++;
                             }
@@ -811,19 +813,19 @@ namespace Betfair.Services
                             if (priceLevel.Count >= 2)
                             {
                                 using var cmd = new SqliteCommand(insertQuery, connection);
-                                cmd.Parameters.AddWithValue("$MarketId", marketId);
-                                cmd.Parameters.AddWithValue("$MarketName", marketChange.MarketDefinition?.MarketType ?? "WIN");
-                                cmd.Parameters.AddWithValue("$SelectionId", runnerChange.Id);
-                                cmd.Parameters.AddWithValue("$Status", status);
-                                cmd.Parameters.AddWithValue("$PriceType", "AvailableToLay");
-                                cmd.Parameters.AddWithValue("$Price", priceLevel[0]); // Price
-                                cmd.Parameters.AddWithValue("$Size", priceLevel[1]); // Size
-                                cmd.Parameters.AddWithValue("$RunnerName", runnerName ?? (object)DBNull.Value);
-                                cmd.Parameters.AddWithValue("$Venue", venue ?? (object)DBNull.Value);
-                                cmd.Parameters.AddWithValue("$EventDate", eventDate ?? (object)DBNull.Value);
-                                cmd.Parameters.AddWithValue("$EventName", eventName ?? (object)DBNull.Value);
-                                cmd.Parameters.AddWithValue("$box", boxNumber ?? (object)DBNull.Value);
-                                cmd.Parameters.AddWithValue("$RunnerId", runnerId ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("@MarketId", marketId);
+                                cmd.Parameters.AddWithValue("@MarketName", marketChange.MarketDefinition?.MarketType ?? "WIN");
+                                cmd.Parameters.AddWithValue("@SelectionId", runnerChange.Id);
+                                cmd.Parameters.AddWithValue("@Status", status);
+                                cmd.Parameters.AddWithValue("@PriceType", "AvailableToLay");
+                                cmd.Parameters.AddWithValue("@Price", priceLevel[0]); // Price
+                                cmd.Parameters.AddWithValue("@Size", priceLevel[1]); // Size
+                                cmd.Parameters.AddWithValue("@RunnerName", runnerName ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("@Venue", venue ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("@EventDate", eventDate ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("@EventName", eventName ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("@box", boxNumber ?? (object)DBNull.Value);
+                                cmd.Parameters.AddWithValue("@RunnerId", runnerId ?? (object)DBNull.Value);
                                 await cmd.ExecuteNonQueryAsync();
                                 totalPricesStored++;
                             }
@@ -831,7 +833,7 @@ namespace Betfair.Services
                     }
                 }
 
-                _logger.LogInformation($"✅ Real-time odds stored for market {marketId} in {tableName} ({totalPricesStored} price points)");
+                _logger.LogInformation("✅ Real-time odds stored for market {marketId} in {tableName} ({totalPricesStored} price points)", marketId, tableName, totalPricesStored);
             }
             catch (Exception ex)
             {

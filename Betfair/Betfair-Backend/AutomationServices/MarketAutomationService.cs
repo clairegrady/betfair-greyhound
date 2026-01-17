@@ -240,6 +240,7 @@ public class MarketAutomationService
 
         var today = DateTime.Now.Date;
         var tomorrow = today.AddDays(1);
+        var fourDaysAgo = today.AddDays(-4);  // Extended backwards for backfill
 
         // Check each filter condition separately
         var eventIdMatches = marketCatalogues.Where(c => string.IsNullOrEmpty(eventId) || c.Event.Id.Equals(eventId, StringComparison.OrdinalIgnoreCase)).ToList();
@@ -256,8 +257,9 @@ public class MarketAutomationService
         Console.WriteLine($"Markets scheduled for today: {todayEvents.Count}");
         Console.WriteLine($"Markets scheduled for tomorrow: {tomorrowEvents.Count}");
         Console.WriteLine($"Markets scheduled for today or tomorrow: {todayAndTomorrowEvents.Count}");
+        Console.WriteLine($"Extended date range for backfill: {fourDaysAgo} to {tomorrow}");
 
-        // Modified filter to include both today and tomorrow
+        // Modified filter to include last 4 days through tomorrow (for backfill)
         // Include both "RX" markets (WIN) and "To Be Placed" markets (PLACE)
         filteredMarketDetails = marketCatalogues
             .Where(catalogue => (string.IsNullOrEmpty(eventId) || catalogue.Event.Id.Equals(eventId, StringComparison.OrdinalIgnoreCase))
@@ -265,8 +267,8 @@ public class MarketAutomationService
                                     catalogue.MarketName.Contains("To Be Placed") || 
                                     catalogue.MarketName.Contains("TBP"))
                                 && catalogue.Event.OpenDate.HasValue
-                                && (catalogue.Event.OpenDate.Value.ToLocalTime().Date == today
-                                    || catalogue.Event.OpenDate.Value.ToLocalTime().Date == tomorrow))
+                                && catalogue.Event.OpenDate.Value.ToLocalTime().Date >= fourDaysAgo
+                                && catalogue.Event.OpenDate.Value.ToLocalTime().Date <= tomorrow)
             .Select(catalogue => new MarketDetails
             {
                 MarketId = catalogue.MarketId,

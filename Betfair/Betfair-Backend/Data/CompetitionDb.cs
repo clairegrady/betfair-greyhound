@@ -19,12 +19,8 @@ public class CompetitionDb
             var competition = competitionResponse.Competition;
             using var command = connection.CreateCommand();
             command.CommandText = @"
-            INSERT INTO Competition (Id, Name, MarketCount, CompetitionRegion)
-            VALUES ($Id, $Name, $MarketCount, $CompetitionRegion)
-            ON CONFLICT(Id) DO UPDATE SET
-            Name = excluded.Name,
-            MarketCount = excluded.MarketCount,
-            CompetitionRegion = excluded.CompetitionRegion";
+            INSERT OR REPLACE INTO Competition (Id, Name, MarketCount, CompetitionRegion)
+            VALUES ($Id, $Name, $MarketCount, $CompetitionRegion)";
 
             command.Parameters.AddWithValue("$Id", competition.Id);
             command.Parameters.AddWithValue("$Name", competition.Name);

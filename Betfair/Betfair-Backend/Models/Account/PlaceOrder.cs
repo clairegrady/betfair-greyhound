@@ -17,16 +17,16 @@ public class PlaceOrderInstruction
     public string OrderType { get; set; }
 
     [JsonPropertyName("limitOrder")]
-    public LimitOrder LimitOrder { get; set; }
+    public LimitOrder? LimitOrder { get; set; }
 
     [JsonPropertyName("marketOnCloseOrder")]
-    public MarketOnCloseOrder MarketOnCloseOrder { get; set; }
+    public MarketOnCloseOrder? MarketOnCloseOrder { get; set; }
 
     [JsonPropertyName("persistenceType")]
-    public string PersistenceType { get; set; }
+    public string? PersistenceType { get; set; }
 
     [JsonPropertyName("timeInForce")]
-    public string TimeInForce { get; set; }
+    public string? TimeInForce { get; set; }
 
     [JsonPropertyName("minFillSize")]
     public double MinFillSize { get; set; }

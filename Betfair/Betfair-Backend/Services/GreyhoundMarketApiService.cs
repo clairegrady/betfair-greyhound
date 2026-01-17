@@ -81,8 +81,8 @@ public class GreyhoundMarketApiService : IMarketApiService
                 eventIds = eventId != null ? new[] { eventId } : null,
                 // Only filter by event type if we don't have a specific event ID
                 eventTypeIds = eventId == null ? new List<string> { "4339" } : null, // Greyhound Event Type ID
-                marketTypeCodes = new[] { "WIN", "PLACE" },
-                marketStatuses = new[] { "OPEN", "ACTIVE", "SUSPENDED" },
+                marketTypes = new[] { "WIN", "PLACE" },
+                marketBettingTypes = new[] { "ODDS" },
                 marketCountries = new[] { "AU", "NZ" } // Australian and New Zealand greyhounds
             };
 
@@ -113,8 +113,8 @@ public class GreyhoundMarketApiService : IMarketApiService
             _logger.LogDebug("Greyhound market catalogue response: {Response}", jsonResponse);
             
             // Add console output for debugging
-            Console.WriteLine($"🔍 GreyhoundMarketApiService API Response Length: {jsonResponse.Length}");
-            Console.WriteLine($"📥 API Response: {jsonResponse}");
+            //Console.WriteLine($"🔍 GreyhoundMarketApiService API Response Length: {jsonResponse.Length}");
+            //Console.WriteLine($"📥 API Response: {jsonResponse}");
             
             return jsonResponse;
         }

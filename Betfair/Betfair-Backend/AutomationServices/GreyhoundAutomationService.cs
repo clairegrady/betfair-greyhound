@@ -193,9 +193,10 @@ public class GreyhoundAutomationService
 
     var today = DateTime.Now.Date;
     var twoDaysFromNow = today.AddDays(2);
+    var fourDaysAgo = today.AddDays(-4);  // Extended backwards for backfill
 
     Console.WriteLine($"🔍 Filtering {marketCatalogues.Count} market catalogues for eventId: {targetEventId}");
-    Console.WriteLine($"🔍 Date range: {today} to {twoDaysFromNow}");
+    Console.WriteLine($"🔍 Date range: {fourDaysAgo} to {twoDaysFromNow}");
     
     var filteredMarketCatalogues = marketCatalogues
         .Where(catalogue =>
@@ -203,7 +204,7 @@ public class GreyhoundAutomationService
             var marketNameMatch = Regex.IsMatch(catalogue.MarketName, @"^R\d{1,2}");
             var hasOpenDate = catalogue.Event?.OpenDate.HasValue ?? false;
             var openDate = hasOpenDate ? catalogue.Event.OpenDate.Value.ToLocalTime().Date : DateTime.MinValue;
-            var isWithinRange = hasOpenDate && openDate >= today.AddDays(-1) && openDate <= twoDaysFromNow;
+            var isWithinRange = hasOpenDate && openDate >= fourDaysAgo && openDate <= twoDaysFromNow;
             
             // Only filter by eventId if a specific one was requested, otherwise get all markets in date range
             var eventIdMatch = string.IsNullOrEmpty(targetEventId) || 
