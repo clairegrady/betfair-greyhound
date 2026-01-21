@@ -2,7 +2,7 @@
 <project version="4">
   <component name="DataSourceManagerImpl" format="xml" multifile-model="true">
     <data-source source="LOCAL" name="betfairmarket" uuid="62392dc8-04dc-4857-9089-e611b436ddde">
-      <driver-ref>sqlite.xerial</driver-ref>
+      <driver-ref>e305e0ef-ad1b-413f-b02c-1531e79f4f2b</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
       <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/Betfair-Backend/betfairmarket.sqlite</jdbc-url>

@@ -46,6 +46,13 @@ namespace Betfair.Services.Account
                                 persistenceType = i.LimitOrder.PersistenceType
                             }
                             : null,
+                        limitOnCloseOrder = i.LimitOnCloseOrder != null
+                            ? new
+                            {
+                                price = i.LimitOnCloseOrder.Price,
+                                liability = i.LimitOnCloseOrder.Liability
+                            }
+                            : null,
                         marketOnCloseOrder = i.MarketOnCloseOrder,
                         persistenceType = i.PersistenceType,
                         timeInForce = i.TimeInForce,

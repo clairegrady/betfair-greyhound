@@ -224,6 +224,13 @@ namespace Betfair.AutomatedServices
                         lastSubscriptionRefresh = DateTime.UtcNow;
                         _logger.LogInformation("✅ Market subscriptions refreshed successfully");
                     }
+                    catch (System.IO.IOException ioEx) when (ioEx.Message.Contains("encryption operation failed") || ioEx.Message.Contains("Bad address"))
+                    {
+                        // SSL connection broken - trigger reconnection
+                        _logger.LogWarning("🔌 SSL connection broken detected - triggering immediate reconnection");
+                        await ReconnectAsync();
+                        lastSubscriptionRefresh = DateTime.UtcNow; // Reset timer after reconnect
+                    }
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, "Error refreshing market subscriptions");
@@ -237,40 +244,98 @@ namespace Betfair.AutomatedServices
         private async Task ReconnectAsync()
         {
             var attempts = 0;
+            _logger.LogWarning($"🔄 Starting reconnection process (SSL error or connection lost)...");
+            
             while (attempts < _settings.MaxReconnectAttempts)
             {
                 try
                 {
-                    await _streamApiService.DisconnectAsync();
-                    await Task.Delay(TimeSpan.FromSeconds(_settings.ReconnectDelaySeconds));
+                    attempts++;
+                    _logger.LogInformation($"🔌 Reconnection attempt {attempts}/{_settings.MaxReconnectAttempts}...");
                     
-                    var connected = await _streamApiService.ConnectAsync();
-                    if (connected)
+                    // Clean disconnect first
+                    try
                     {
-                        // Re-authenticate after reconnection using regular auth service
-                        var sessionToken = await _authService.GetSessionTokenAsync();
-                        var authenticated = await _streamApiService.AuthenticateAsync(_authSettings.Value.AppKey, sessionToken);
-                        
-                        if (authenticated)
-                        {
-                            _logger.LogInformation("Stream API reconnected and authenticated successfully");
-                            return;
-                        }
-                        else
-                        {
-                            _logger.LogWarning("Stream API reconnected but authentication failed");
-                        }
+                        await _streamApiService.DisconnectAsync();
                     }
+                    catch (Exception disconnectEx)
+                    {
+                        _logger.LogWarning(disconnectEx, "Error during disconnect (expected if connection already broken)");
+                    }
+                    
+                    // Wait before reconnecting (exponential backoff)
+                    var delay = TimeSpan.FromSeconds(_settings.ReconnectDelaySeconds * attempts);
+                    _logger.LogInformation($"⏳ Waiting {delay.TotalSeconds}s before reconnection attempt...");
+                    await Task.Delay(delay);
+                    
+                    // Reconnect
+                    var connected = await _streamApiService.ConnectAsync();
+                    if (!connected)
+                    {
+                        _logger.LogWarning($"❌ Connection attempt {attempts} failed");
+                        continue;
+                    }
+                    
+                    _logger.LogInformation("✅ TCP connection re-established");
+                    
+                    // Re-authenticate
+                    var sessionToken = await _authService.GetSessionTokenAsync();
+                    if (string.IsNullOrEmpty(sessionToken))
+                    {
+                        _logger.LogError("❌ Failed to get session token for re-authentication");
+                        continue;
+                    }
+                    
+                    var authenticated = await _streamApiService.AuthenticateAsync(_authSettings.Value.AppKey, sessionToken);
+                    if (!authenticated)
+                    {
+                        _logger.LogWarning($"❌ Authentication attempt {attempts} failed");
+                        continue;
+                    }
+                    
+                    _logger.LogInformation("✅ Stream API re-authenticated successfully");
+                    
+                    // Resubscribe to markets
+                    _logger.LogInformation("📊 Resubscribing to markets after reconnection...");
+                    
+                    // Horse Racing - WIN
+                    await _streamApiService.SubscribeToMarketsAsync(
+                        eventTypeIds: new List<string> { "7" },
+                        marketTypes: new List<string> { "WIN" },
+                        countryCodes: new List<string> { "AU", "NZ" },
+                        timeWindow: TimeSpan.FromMinutes(30)
+                    );
+                    
+                    // Horse Racing - PLACE
+                    await _streamApiService.SubscribeToMarketsAsync(
+                        eventTypeIds: new List<string> { "7" },
+                        marketTypes: new List<string> { "PLACE" },
+                        countryCodes: new List<string> { "AU", "NZ" },
+                        timeWindow: TimeSpan.FromMinutes(30)
+                    );
+                    
+                    // Greyhound Racing - WIN
+                    await _streamApiService.SubscribeToMarketsAsync(
+                        eventTypeIds: new List<string> { "4339" },
+                        marketTypes: new List<string> { "WIN" },
+                        countryCodes: new List<string> { "AU", "NZ" },
+                        timeWindow: TimeSpan.FromMinutes(30)
+                    );
+                    
+                    _logger.LogWarning($"🎉 Stream API fully reconnected and resubscribed (attempt {attempts})");
+                    return;
+                }
+                catch (System.IO.IOException ioEx) when (ioEx.Message.Contains("encryption operation failed") || ioEx.Message.Contains("Bad address"))
+                {
+                    _logger.LogWarning($"🔌 SSL error during reconnection attempt {attempts}: {ioEx.Message}");
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, $"Reconnection attempt {attempts + 1} failed");
+                    _logger.LogError(ex, $"❌ Reconnection attempt {attempts} failed with exception");
                 }
-
-                attempts++;
             }
 
-            _logger.LogError("Failed to reconnect to Stream API after maximum attempts");
+            _logger.LogError($"💀 Failed to reconnect to Stream API after {attempts} attempts - will retry on next monitor cycle");
         }
 
         private async void SendHeartbeat(object state)
@@ -281,6 +346,12 @@ namespace Betfair.AutomatedServices
                 {
                     await _streamApiService.SendHeartbeatAsync();
                 }
+            }
+            catch (System.IO.IOException ioEx) when (ioEx.Message.Contains("encryption operation failed") || ioEx.Message.Contains("Bad address"))
+            {
+                // SSL connection broken - trigger reconnection
+                _logger.LogWarning("🔌 SSL connection broken detected in heartbeat - triggering reconnection");
+                _ = Task.Run(async () => await ReconnectAsync());
             }
             catch (Exception ex)
             {

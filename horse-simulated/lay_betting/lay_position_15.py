@@ -8,7 +8,6 @@ import sys
 sys.path.insert(0, '/Users/clairegrady/RiderProjects/betfair/utilities')
 
 import pandas as pd
-import sqlite3
 import requests
 import time
 import pytz
@@ -23,7 +22,6 @@ MAX_ODDS = 500
 SECONDS_BEFORE_RACE = 5
 FLAT_STAKE = 10
 
-RACE_TIMES_DB = "/Users/clairegrady/RiderProjects/betfair/databases/shared/race_info.db"
 BACKEND_URL = "http://localhost:5173"
 
 # Set up logging
@@ -65,11 +63,11 @@ class HorseLayBetting:
         """Get horse races within betting window"""
         try:
             # Get races from database
-            conn = sqlite3.connect("/Users/clairegrady/RiderProjects/betfair/databases/shared/race_info.db", timeout=30)
+            conn = get_db_connection('betfair_races')
             query = """
                 SELECT venue, race_number, race_time, race_date, country
-                FROM race_times
-                WHERE race_date = date('now', 'localtime')
+                FROM horse_race_times
+                WHERE race_date::date >= CURRENT_DATE
                 ORDER BY race_time
             """
             df = pd.read_sql(query, conn)
@@ -122,11 +120,11 @@ class HorseLayBetting:
             today_str = datetime.now(pytz.timezone('Australia/Sydney')).strftime("%-d")
             
             query = """
-                SELECT MarketId
-                FROM MarketCatalogue
-                WHERE EventName LIKE ?
-                AND MarketName LIKE ?
-                AND EventTypeName = 'Horse Racing'
+                SELECT marketid
+                FROM marketcatalogue
+                WHERE LOWER(eventname) LIKE LOWER(%s)
+                AND LOWER(marketname) LIKE LOWER(%s)
+                AND eventtypename = 'Horse Racing'
                 LIMIT 1
             """
             
@@ -153,10 +151,11 @@ class HorseLayBetting:
             # Get lay prices from Stream API data
             query = """
                 SELECT DISTINCT selectionid, price
-                FROM marketbooklayprices
-                WHERE MarketId = ?
+                FROM horsemarketbook
+                WHERE marketid = %s
+                AND pricetype = 'AvailableToLay'
                 AND price IS NOT NULL
-                ORDER BY selectionid, price ASC
+                ORDER BY price ASC
             """
             
             cursor.execute(query, (market_id,))
@@ -167,10 +166,10 @@ class HorseLayBetting:
             
             # Get runner names and barriers
             cursor.execute("""
-                SELECT DISTINCT selectionid, RUNNER_NAME, STALL_DRAW
-                FROM HorseMarketBook
-                WHERE MarketId = ?
-                AND RUNNER_NAME IS NOT NULL
+                SELECT DISTINCT selectionid, runner_name, stall_draw
+                FROM horsemarketbook
+                WHERE marketid = %s
+                AND runner_name IS NOT NULL
             """, (market_id,))
             runner_results = cursor.fetchall()
             
@@ -225,9 +224,9 @@ class HorseLayBetting:
             conn = get_db_connection("betfairmarket")
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT DISTINCT selectionid, RUNNER_NAME, STALL_DRAW
-                FROM HorseMarketBook
-                WHERE MarketId = ?
+                SELECT DISTINCT selectionid, runner_name, stall_draw
+                FROM horsemarketbook
+                WHERE marketid = %s
             """, (market_id,))
             
             import re
@@ -273,7 +272,7 @@ class HorseLayBetting:
                 betfair_conn = get_db_connection("betfairmarket")
                 betfair_cursor = betfair_conn.cursor()
                 betfair_cursor.execute("""
-                    SELECT TotalMatched FROM MarketCatalogue WHERE MarketId = ?
+                    SELECT totalmatched FROM marketcatalogue WHERE marketid = %s
                 """, (race_info['market_id'],))
                 result = betfair_cursor.fetchone()
                 if result:
@@ -288,10 +287,10 @@ class HorseLayBetting:
             liability = FLAT_STAKE * (horse['odds'] - 1)
             
             cursor.execute("""
-                INSERT INTO paper_trades
+                INSERT INTO paper_trades_horses
                 (date, venue, country, race_number, market_id, selection_id, horse_name, barrier_number,
                  position_in_market, odds, stake, liability, finishing_position, result, total_matched)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 datetime.now().strftime('%Y-%m-%d'),
                 race_info['venue'],

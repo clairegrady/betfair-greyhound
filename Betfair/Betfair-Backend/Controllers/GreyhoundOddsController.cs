@@ -77,42 +77,62 @@ public class GreyhoundOddsController : ControllerBase
             using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync();
 
-            // Get all active lay prices for the greyhound market
+            // Get all active lay prices for the greyhound market WITH runner names and box numbers
             var query = @"
                 SELECT 
-                    SelectionId,
-                    MIN(CASE WHEN PriceType = 'AvailableToLay' THEN Price END) as best_lay_price,
-                    MIN(CASE WHEN PriceType = 'AvailableToBack' THEN Price END) as best_back_price,
-                    COUNT(*) as price_count
-                FROM GreyhoundMarketBook
-                WHERE MarketId = @marketId 
-                AND Price > 0 
-                AND Status = 'ACTIVE'
-                GROUP BY SelectionId
-                ORDER BY SelectionId";
+                    gmb.selectionid,
+                    MIN(CASE WHEN gmb.pricetype = 'AvailableToLay' THEN gmb.price END) as best_lay_price,
+                    MIN(CASE WHEN gmb.pricetype = 'AvailableToBack' THEN gmb.price END) as best_back_price,
+                    COUNT(*) as price_count,
+                    mcr.runnername,
+                    mcr.sortpriority as box
+                FROM greyhoundmarketbook gmb
+                LEFT JOIN marketcatalogue_runners mcr 
+                    ON gmb.marketid = mcr.marketid 
+                    AND gmb.selectionid = mcr.selectionid
+                WHERE gmb.marketid = @marketId 
+                AND gmb.price > 0 
+                AND gmb.status = 'ACTIVE'
+                GROUP BY gmb.selectionid, mcr.runnername, mcr.sortpriority
+                ORDER BY gmb.selectionid";
 
             using var command = new NpgsqlCommand(query, connection);
             command.Parameters.AddWithValue("@marketId", marketId);
 
             using var reader = await command.ExecuteReaderAsync();
             
-            var odds = new List<object>();
+            var runners = new List<object>();
             while (await reader.ReadAsync())
             {
-                odds.Add(new
+                var selectionId = reader.GetInt32(0);
+                var runnerName = reader.IsDBNull(4) ? $"Runner {selectionId}" : reader.GetString(4);
+                var box = reader.IsDBNull(5) ? (int?)null : reader.GetInt32(5);
+                
+                runners.Add(new
                 {
-                    selectionId = reader.GetInt32(0),
-                    bestLayPrice = reader.IsDBNull(1) ? (double?)null : reader.GetDouble(1),
-                    bestBackPrice = reader.IsDBNull(2) ? (double?)null : reader.GetDouble(2),
-                    priceCount = reader.GetInt32(3)
+                    selectionId,
+                    runnerName,
+                    box,
+                    ex = new
+                    {
+                        availableToLay = reader.IsDBNull(1) ? new List<object>() : new List<object>
+                        {
+                            new { price = reader.GetDouble(1), size = 0.0 }
+                        },
+                        availableToBack = reader.IsDBNull(2) ? new List<object>() : new List<object>
+                        {
+                            new { price = reader.GetDouble(2), size = 0.0 }
+                        }
+                    }
                 });
             }
 
             return Ok(new
             {
                 marketId,
-                odds,
-                count = odds.Count,
+                runners,  // For LIVE script
+                odds = runners,  // For simulated scripts (compatibility)
+                count = runners.Count,
                 retrievedAt = DateTime.UtcNow
             });
         }

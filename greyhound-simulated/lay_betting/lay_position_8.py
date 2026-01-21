@@ -22,7 +22,6 @@ MAX_ODDS = 500
 SECONDS_BEFORE_RACE = 5
 FLAT_STAKE = 10
 
-
 RACE_TIMES_DB = "/Users/clairegrady/RiderProjects/betfair/databases/shared/race_info.db"
 BACKEND_URL = "http://localhost:5173"
 
@@ -66,21 +65,25 @@ class GreyhoundLayBetting:
         try:
             # Get races from database (include today and tomorrow for cross-midnight races)
             conn = get_db_connection("/Users/clairegrady/RiderProjects/betfair/databases/shared/race_info.db")
-            query = """
+            cursor = conn.cursor()
+            
+            cursor.execute("""
                 SELECT venue, race_number, race_time, race_date, country
                 FROM greyhound_race_times
                 WHERE race_date::date >= CURRENT_DATE
                 AND race_date::date <= CURRENT_DATE + INTERVAL '1 day'
                 ORDER BY race_date, race_time
-            """
-            df = pd.read_sql(query, conn)
+            """)
+            
+            rows = cursor.fetchall()
             conn.close()
             
             # Log total races once at startup
             if not self.logged_initial_races:
-                logger.info(f"📊 Found {len(df)} total races in database for today/tomorrow")
+                logger.info(f"📊 Found {len(rows)} total races in database for today/tomorrow")
                 self.logged_initial_races = True
-            if df.empty:
+            
+            if not rows:
                 logger.debug("No races found in database for today")
                 return []
             
@@ -90,12 +93,14 @@ class GreyhoundLayBetting:
             now_aest = datetime.now(aest_tz)
             
             upcoming_races = []
-            for _, row in df.iterrows():
+            for row in rows:
+                venue, race_number, race_time, race_date, country = row
+                
                 # Use the actual timezone from the database (e.g. Australia/Perth, Australia/Sydney)
-                race_tz_name = row.get('timezone', 'Australia/Sydney')
+                race_tz_name = 'Australia/Sydney'  # Default timezone
                 race_tz = pytz.timezone(race_tz_name)
                 
-                race_datetime_str = f"{row['race_date']} {row['race_time']}"
+                race_datetime_str = f"{race_date} {race_time}"
                 # Localize in the race's actual timezone, then convert to AEST for comparison
                 race_datetime_local = race_tz.localize(datetime.strptime(race_datetime_str, '%Y-%m-%d %H:%M'))
                 race_datetime = race_datetime_local.astimezone(aest_tz)
@@ -103,21 +108,21 @@ class GreyhoundLayBetting:
                 seconds_until = (race_datetime - now_aest).total_seconds()
                 
                 # Only bet if within time window
-                if -5 <= seconds_until <= SECONDS_BEFORE_RACE:
+                if 5 <= seconds_until <= SECONDS_BEFORE_RACE + 10:
                     # Match to market in Betfair DB
-                    market_id = self.find_market_id(row['venue'], row['race_number'])
+                    market_id = self.find_market_id(venue, race_number)
                     if market_id:
                         upcoming_races.append({
-                            'venue': row['venue'],
-                            'country': row.get('country', 'AUS'),
-                            'race_number': row['race_number'],
+                            'venue': venue,
+                            'country': country or 'AUS',
+                            'race_number': race_number,
                             'market_id': market_id,
                             'seconds_until': seconds_until,
                             'race_datetime': race_datetime
                         })
-                        logger.debug(f"Added {row['venue']} R{row['race_number']} ({seconds_until:.0f}s)")
+                        logger.debug(f"Added {venue} R{race_number} ({seconds_until:.0f}s)")
                     else:
-                        logger.debug(f"No market found for {row['venue']} R{row['race_number']}")
+                        logger.debug(f"No market found for {venue} R{race_number}")
             
             return upcoming_races
             
@@ -162,6 +167,21 @@ class GreyhoundLayBetting:
             conn = get_db_connection('betfairmarket')
             cursor = conn.cursor()
             
+            # First, get runner names from marketcatalogue_runners (more reliable)
+            cursor.execute("""
+                SELECT selectionid, runnername, sortpriority
+                FROM marketcatalogue_runners
+                WHERE marketid = %s
+            """, (market_id,))
+            
+            name_map = {}
+            box_map = {}
+            for sel_id, name, sort in cursor.fetchall():
+                if name:
+                    name_map[sel_id] = name
+                if sort:
+                    box_map[sel_id] = sort
+            
             # FOR LAY BETTING: Get ONLY LAY odds for this market
             # NO FALLBACK TO BACK PRICES
             query = """
@@ -188,12 +208,22 @@ class GreyhoundLayBetting:
             
             for sel_id, price, runner_name, box in results:
                 if sel_id not in runners_dict:
-                    clean_name = re.sub(r'^\d+\.\s*', '', runner_name) if runner_name else f'Dog {sel_id}'
+                    # Prioritize name from marketcatalogue_runners, fallback to greyhoundmarketbook
+                    if sel_id in name_map:
+                        clean_name = name_map[sel_id]
+                    elif runner_name:
+                        clean_name = re.sub(r'^\d+\.\s*', '', runner_name)
+                    else:
+                        clean_name = f'Dog {sel_id}'
+                    
+                    # Prioritize box from marketcatalogue_runners
+                    final_box = box_map.get(sel_id) or box
+                    
                     runners_dict[sel_id] = {
                         'selection_id': sel_id,
                         'odds': price,
                         'dog_name': clean_name,
-                        'box': box if box else None
+                        'box': final_box
                     }
             
             odds_map = list(runners_dict.values())
@@ -221,9 +251,26 @@ class GreyhoundLayBetting:
                 logger.warning(f"❌ No odds data returned from API for market {market_id}")
                 return self.get_odds_from_db(market_id)
             
-            # Get runner names from database
+            # Get runner names from database - prioritize marketcatalogue_runners
             conn = get_db_connection('betfairmarket')
             cursor = conn.cursor()
+            
+            # First get from marketcatalogue_runners (more reliable)
+            cursor.execute("""
+                SELECT selectionid, runnername, sortpriority
+                FROM marketcatalogue_runners
+                WHERE marketid = %s
+            """, (market_id,))
+            
+            runner_names = {}
+            box_numbers = {}
+            for sel_id, name, sort in cursor.fetchall():
+                if name:
+                    runner_names[sel_id] = name
+                if sort:
+                    box_numbers[sel_id] = sort
+            
+            # Fallback to greyhoundmarketbook if needed
             cursor.execute("""
                 SELECT DISTINCT selectionid, runnername, box
                 FROM greyhoundmarketbook
@@ -231,13 +278,13 @@ class GreyhoundLayBetting:
             """, (market_id,))
             
             import re
-            runner_names = {}
-            box_numbers = {}
             for sel_id, runner_name, box in cursor.fetchall():
-                if runner_name:
+                # Only use if not already in runner_names
+                if sel_id not in runner_names and runner_name:
                     clean_name = re.sub(r'^\d+\.\s*', '', runner_name)
                     runner_names[sel_id] = clean_name
-                if box:
+                # Only use box if not already set
+                if sel_id not in box_numbers and box:
                     box_numbers[sel_id] = box
             conn.close()
             
@@ -355,7 +402,6 @@ class GreyhoundLayBetting:
             if len(runners) < POSITION_TO_LAY:
                 logger.warning(f"❌ Not enough runners (need {POSITION_TO_LAY}, have {len(runners)})")
                 return
-            
             
             # Sort by odds (ascending) to get favorites
             # Use selection_id as tie-breaker when odds are equal (lower ID = earlier favorite)

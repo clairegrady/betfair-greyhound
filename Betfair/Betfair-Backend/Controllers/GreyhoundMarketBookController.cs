@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using Betfair.Data;
+using Betfair.Services;
 using System.Threading.Tasks;
+using System.Text.Json;
 using Npgsql;
 using Dapper;
 
@@ -11,11 +13,16 @@ namespace Betfair.Controllers;
 public class GreyhoundMarketBookController : ControllerBase
 {
     private readonly MarketBookDb _marketBookDb;
+    private readonly IMarketApiService _marketApiService;
     private readonly string _connectionString;
 
-    public GreyhoundMarketBookController(MarketBookDb marketBookDb, IConfiguration configuration)
+    public GreyhoundMarketBookController(
+        MarketBookDb marketBookDb, 
+        IMarketApiService marketApiService,
+        IConfiguration configuration)
     {
         _marketBookDb = marketBookDb;
+        _marketApiService = marketApiService;
         _connectionString = configuration.GetConnectionString("DefaultDb");
     }
 
@@ -141,6 +148,48 @@ public class GreyhoundMarketBookController : ControllerBase
         catch (Exception ex)
         {
             return StatusCode(500, new { message = "Error fetching greyhound market odds", error = ex.Message });
+        }
+    }
+
+    [HttpGet("status/{marketId}")]
+    public async Task<IActionResult> GetMarketStatus(string marketId)
+    {
+        try
+        {
+            // Call Betfair's listMarketBook API to get LIVE market status
+            var marketBookJson = await _marketApiService.ListMarketBookAsync(new List<string> { marketId });
+            
+            using var jsonDoc = JsonDocument.Parse(marketBookJson);
+            var result = jsonDoc.RootElement.GetProperty("result");
+            
+            if (result.GetArrayLength() == 0)
+            {
+                return NotFound(new { 
+                    marketId,
+                    status = "NOT_FOUND",
+                    message = "Market not found or not yet available"
+                });
+            }
+            
+            var marketBook = result[0];
+            var status = marketBook.GetProperty("status").GetString(); // OPEN, SUSPENDED, CLOSED
+            var inplay = marketBook.GetProperty("inplay").GetBoolean();
+            var betDelay = marketBook.TryGetProperty("betDelay", out var bd) ? bd.GetInt32() : 0;
+            var numberOfActiveRunners = marketBook.TryGetProperty("numberOfActiveRunners", out var nar) ? nar.GetInt32() : 0;
+            
+            return Ok(new
+            {
+                marketId,
+                status,  // OPEN, SUSPENDED, CLOSED
+                inplay,
+                betDelay,
+                numberOfActiveRunners,
+                retrievedAt = DateTime.UtcNow
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = "Error fetching market status", error = ex.Message });
         }
     }
 }

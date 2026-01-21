@@ -1,6 +1,6 @@
 {
   "stakePerBet": 1.00,
-  "maxOdds": 6.0,
+  "maxOdds": 4.0,
   "minOdds": 1.01,
   "maxDailyLoss": 100.00,
   "maxDailyBets": 1000,

@@ -73,12 +73,14 @@ class GreyhoundRaceTimesScraper:
             'bathurst': 'Bathurst',
             'temora': 'Temora',
             'nowra': 'Nowra',
+            'Murray Bridge Straight': 'Murray Bridge',
             # New Zealand venues
             'hatrick straight': 'Hatrick Straight',
             'hatrick': 'Hatrick Straight',  # Fallback
             'manawatu': 'Manawatu',
             'addington': 'Addington',
             'cambridge': 'Cambridge',
+            'ascot park': 'Ascot Park',
         }
     
     def scrape_racenet_greyhounds(self) -> List[Dict]:
@@ -277,7 +279,7 @@ class GreyhoundRaceTimesScraper:
                     continue
             
             if formatted_races:
-                logger.info(f"✅ Scraped {len(formatted_races)} greyhound races from Racenet")
+                logger.info(f"✅ Scraped {len(formatted_races)} greyhound races from Racenet (AUS + NZ)")
             else:
                 logger.warning("⚠️  No greyhound races found on Racenet")
                 
@@ -295,7 +297,7 @@ class GreyhoundRaceTimesScraper:
         venue_lower = venue.lower()
         
         # NZ venues
-        nz_venues = ['hatrick straight', 'hatrick', 'manawatu', 'manukau', 'addington', 'cambridge']
+        nz_venues = ['hatrick straight', 'hatrick', 'manawatu', 'manukau', 'addington', 'cambridge', 'ascot park']
         if any(v in venue_lower for v in nz_venues):
             return 'Pacific/Auckland'
         
@@ -386,6 +388,10 @@ class GreyhoundRaceTimesScraper:
             
             conn.commit()
             
+            # Normalize venue names (fix any stragglers that weren't caught by mappings)
+            self._normalize_venue_names(cursor)
+            conn.commit()
+            
             logger.info(f"💾 Saved: {saved}, Errors: {errors}")
             logger.info(f"🌏 AUS: {aus_count}, NZ: {nz_count}")
             
@@ -395,6 +401,22 @@ class GreyhoundRaceTimesScraper:
         finally:
             cursor.close()
             conn.close()
+    
+    def _normalize_venue_names(self, cursor):
+        """Normalize venue names in database (fix stragglers)"""
+        normalizations = [
+            ("UPDATE greyhound_race_times SET venue = 'Murray Bridge' WHERE venue = 'Murray Bridge Straight'", "Murray Bridge Straight → Murray Bridge"),
+            ("UPDATE greyhound_race_times SET venue = 'Hatrick Straight' WHERE venue = 'Hatrick'", "Hatrick → Hatrick Straight"),
+            ("UPDATE greyhound_race_times SET venue = 'The Meadows' WHERE venue = 'meadows'", "meadows → The Meadows"),
+            ("UPDATE greyhound_race_times SET venue = 'Sandown Park' WHERE venue ILIKE 'sandown%'", "sandown* → Sandown Park"),
+            ("UPDATE greyhound_race_times SET venue = 'Angle Park' WHERE venue ILIKE 'angle%'", "angle* → Angle Park"),
+            ("UPDATE greyhound_race_times SET venue = 'Q Straight' WHERE venue ILIKE 'q%straight'", "Q*Straight → Q Straight"),
+        ]
+        
+        for sql, description in normalizations:
+            cursor.execute(sql)
+            if cursor.rowcount > 0:
+                logger.info(f"   ✅ Normalized {cursor.rowcount} venues: {description}")
     
     def scrape_all_sources(self) -> List[Dict]:
         """Scrape greyhound races - using ONLY Racenet (includes AUS + NZ races)"""
@@ -420,14 +442,14 @@ class GreyhoundRaceTimesScraper:
     
     def show_summary(self):
         """Show summary of races in database"""
-        conn = get_db_connection('betfair_races')
+        conn = psycopg2.connect(**PG_CONFIG)
         cursor = conn.cursor()
         
         try:
             cursor.execute("""
                 SELECT COUNT(*) 
                 FROM greyhound_race_times 
-                WHERE race_date = CURRENT_DATE
+                WHERE race_date::date = CURRENT_DATE
             """)
             
             count = cursor.fetchone()[0]
@@ -437,7 +459,7 @@ class GreyhoundRaceTimesScraper:
             cursor.execute("""
                 SELECT country, COUNT(*) as race_count
                 FROM greyhound_race_times
-                WHERE race_date = CURRENT_DATE
+                WHERE race_date::date = CURRENT_DATE
                 GROUP BY country
             """)
             
@@ -451,7 +473,7 @@ class GreyhoundRaceTimesScraper:
             cursor.execute("""
                 SELECT venue, country, COUNT(*) as race_count
                 FROM greyhound_race_times
-                WHERE race_date = CURRENT_DATE
+                WHERE race_date::date = CURRENT_DATE
                 GROUP BY venue, country
                 ORDER BY country, race_count DESC
             """)

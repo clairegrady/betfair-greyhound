@@ -19,9 +19,8 @@ from db_connection_helper import get_db_connection
 # Configuration
 POSITION_TO_LAY = 1  # Laying the FAVORITE
 MAX_ODDS = 500
-SECONDS_BEFORE_RACE = 5
+SECONDS_BEFORE_RACE = 20  # Increased from 5 to match closer to live script timing
 FLAT_STAKE = 10
-
 RACE_TIMES_DB = "/Users/clairegrady/RiderProjects/betfair/databases/shared/race_info.db"
 BACKEND_URL = "http://localhost:5173"
 
@@ -63,8 +62,8 @@ class GreyhoundLayBetting:
     def get_upcoming_races(self) -> List[Dict]:
         """Get greyhound races within betting window"""
         try:
-            # Get races from database (include today and tomorrow for cross-midnight races)
-            conn = get_db_connection("/Users/clairegrady/RiderProjects/betfair/databases/shared/race_info.db")
+            # Get races from PostgreSQL database
+            conn = get_db_connection('betfair_races')
             query = """
                 SELECT venue, race_number, race_time, race_date, country
                 FROM greyhound_race_times
@@ -72,51 +71,55 @@ class GreyhoundLayBetting:
                 AND race_date::date <= CURRENT_DATE + INTERVAL '1 day'
                 ORDER BY race_date, race_time
             """
-            df = pd.read_sql(query, conn)
+            cursor = conn.cursor()
+            cursor.execute(query)
+            results = cursor.fetchall()
             conn.close()
             
             # Log total races once at startup
             if not self.logged_initial_races:
-                logger.info(f"📊 Found {len(df)} total races in database for today/tomorrow")
+                logger.info(f"📊 Found {len(results)} total races in database for today/tomorrow")
                 self.logged_initial_races = True
-            if df.empty:
+            
+            if not results:
                 logger.debug("No races found in database for today")
                 return []
-            
             
             # Filter races within time window
             aest_tz = pytz.timezone('Australia/Sydney')
             now_aest = datetime.now(aest_tz)
             
             upcoming_races = []
-            for _, row in df.iterrows():
-                # Use the actual timezone from the database (e.g. Australia/Perth, Australia/Sydney)
-                race_tz_name = row.get('timezone', 'Australia/Sydney')
-                race_tz = pytz.timezone(race_tz_name)
+            for row in results:
+                venue, race_number, race_time, race_date, country = row
                 
-                race_datetime_str = f"{row['race_date']} {row['race_time']}"
+                # Use the actual timezone from the database (e.g. Australia/Perth, Australia/Sydney)
+                # For now, default to Australia/Sydney if timezone column doesn't exist
+                race_tz = aest_tz
+                
+                race_datetime_str = f"{race_date} {race_time}"
                 # Localize in the race's actual timezone, then convert to AEST for comparison
                 race_datetime_local = race_tz.localize(datetime.strptime(race_datetime_str, '%Y-%m-%d %H:%M'))
                 race_datetime = race_datetime_local.astimezone(aest_tz)
                 
                 seconds_until = (race_datetime - now_aest).total_seconds()
                 
-                # Only bet if within time window
-                if -5 <= seconds_until <= SECONDS_BEFORE_RACE:
+                # Betting window: 5-30 seconds before race (increased from 5-10s)
+                if 5 <= seconds_until <= SECONDS_BEFORE_RACE + 10:
                     # Match to market in Betfair DB
-                    market_id = self.find_market_id(row['venue'], row['race_number'])
+                    market_id = self.find_market_id(venue, race_number)
                     if market_id:
                         upcoming_races.append({
-                            'venue': row['venue'],
-                            'country': row.get('country', 'AUS'),
-                            'race_number': row['race_number'],
+                            'venue': venue,
+                            'country': country or 'AUS',
+                            'race_number': race_number,
                             'market_id': market_id,
                             'seconds_until': seconds_until,
                             'race_datetime': race_datetime
                         })
-                        logger.debug(f"Added {row['venue']} R{row['race_number']} ({seconds_until:.0f}s)")
+                        logger.debug(f"Added {venue} R{race_number} ({seconds_until:.0f}s)")
                     else:
-                        logger.debug(f"No market found for {row['venue']} R{row['race_number']}")
+                        logger.debug(f"No market found for {venue} R{race_number}")
             
             return upcoming_races
             
@@ -130,7 +133,15 @@ class GreyhoundLayBetting:
             conn = get_db_connection('betfairmarket')
             cursor = conn.cursor()
             
-            today_str = datetime.now(pytz.timezone('Australia/Sydney')).strftime("%-d")
+            # For NZ venues, use NZ date; for AUS venues, use AEST date
+            if venue in ['Addington', 'Manawatu', 'Hatrick Straight', 'Cambridge']:
+                # NZ timezone
+                tz = pytz.timezone('Pacific/Auckland')
+            else:
+                # Australian timezone (AEST)
+                tz = pytz.timezone('Australia/Sydney')
+            
+            today_str = datetime.now(tz).strftime("%-d")
             
             query = """
                 SELECT marketid
@@ -147,6 +158,13 @@ class GreyhoundLayBetting:
             
             cursor.execute(query, (venue_pattern, race_pattern))
             result = cursor.fetchone()
+            
+            # If not found with date, try without date (more flexible)
+            if not result:
+                venue_pattern_no_date = f'%{venue}%'
+                cursor.execute(query, (venue_pattern_no_date, race_pattern))
+                result = cursor.fetchone()
+            
             conn.close()
             
             return result[0] if result else None
@@ -210,6 +228,7 @@ class GreyhoundLayBetting:
             
             if response.status_code != 200:
                 logger.debug(f"API returned {response.status_code}, trying DB fallback")
+                logger.warning(f"⚠️  USING DB FALLBACK (API failed/no data/exception)")
                 return self.get_odds_from_db(market_id)
             
             data = response.json()
@@ -218,7 +237,10 @@ class GreyhoundLayBetting:
             
             if not odds_data:
                 logger.warning(f"❌ No odds data returned from API for market {market_id}")
+                logger.warning(f"⚠️  USING DB FALLBACK (API failed/no data/exception)")
                 return self.get_odds_from_db(market_id)
+            
+            logger.info(f"✅ USING API ODDS (real-time)")
             
             # Get runner names from database
             conn = get_db_connection('betfairmarket')

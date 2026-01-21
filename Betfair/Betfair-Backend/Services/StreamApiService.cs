@@ -24,6 +24,7 @@ namespace Betfair.Services
         private readonly StreamApiSettings _settings;
         private readonly string _connectionString;
         private readonly SemaphoreSlim _dbSemaphore = new SemaphoreSlim(1, 1);
+        private readonly SemaphoreSlim _writeSemaphore = new SemaphoreSlim(1, 1); // Prevent concurrent writes to SSL stream
 
         private TcpClient _tcpClient;
         private SslStream _sslStream;
@@ -234,8 +235,18 @@ namespace Betfair.Services
                 };
 
                 var json = JsonSerializer.Serialize(authMessage);
-                await _streamWriter.WriteLineAsync(json);
-                await _streamWriter.FlushAsync();
+                
+                // Use semaphore to prevent concurrent writes to SSL stream
+                await _writeSemaphore.WaitAsync();
+                try
+                {
+                    await _streamWriter.WriteLineAsync(json);
+                    await _streamWriter.FlushAsync();
+                }
+                finally
+                {
+                    _writeSemaphore.Release();
+                }
 
                 _logger.LogInformation("Authentication message sent: Id={authMessageId}", authMessage.Id);
 
@@ -436,8 +447,18 @@ namespace Betfair.Services
                 throw new InvalidOperationException("StreamWriter not initialized.");
 
             var json = JsonSerializer.Serialize(message);
-            await _streamWriter.WriteLineAsync(json);
-            await _streamWriter.FlushAsync();
+            
+            // Use semaphore to prevent concurrent writes to SSL stream
+            await _writeSemaphore.WaitAsync();
+            try
+            {
+                await _streamWriter.WriteLineAsync(json);
+                await _streamWriter.FlushAsync();
+            }
+            finally
+            {
+                _writeSemaphore.Release();
+            }
         }
 
 

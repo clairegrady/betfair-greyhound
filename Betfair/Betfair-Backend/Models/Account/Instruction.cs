@@ -25,7 +25,7 @@ public class ReplaceOrdersRequest
     public string MarketId { get; set; }
     public List<ReplaceInstruction> Instructions { get; set; }
     public string CustomerRef { get; set; }
-    public MarketVersion MarketVersion { get; set; }
+    public MarketVersion? MarketVersion { get; set; }  // OPTIONAL per Betfair docs
     public bool Async { get; set; } = false;
 }
 

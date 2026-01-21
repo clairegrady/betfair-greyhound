@@ -143,21 +143,20 @@ namespace Betfair.Services
             using var connection = new NpgsqlConnection(_betfairConnectionString);
             await connection.OpenAsync();
 
-            // Choose the correct table based on race type
-            var tableName = raceType == "horse" ? "horsemarketbook" : "greyhoundmarketbook";
-            
-            // Try to match by venue and race number (date is embedded in EventName)
-            var query = $@"
+            // Look in marketcatalogue table (has all available markets)
+            // NOT in greyhoundmarketbook/horsemarketbook (only has markets we've already subscribed to)
+            var query = @"
                 SELECT DISTINCT marketid 
-                FROM {tableName}
-                WHERE (eventname ILIKE @venuePattern OR marketname ILIKE @venuePattern)
-                AND (marketname ILIKE @racePattern OR marketname ILIKE @racePattern2)
+                FROM marketcatalogue
+                WHERE eventname ILIKE @venuePattern
+                AND marketname ILIKE @racePattern
+                AND eventtypename = @eventType
                 LIMIT 1";
 
             using var command = new NpgsqlCommand(query, connection);
             command.Parameters.AddWithValue("@venuePattern", $"%{venue}%");
-            command.Parameters.AddWithValue("@racePattern", $"R{raceNumber}%");
-            command.Parameters.AddWithValue("@racePattern2", $"Race {raceNumber}%");
+            command.Parameters.AddWithValue("@racePattern", $"R{raceNumber} %");
+            command.Parameters.AddWithValue("@eventType", raceType == "horse" ? "Horse Racing" : "Greyhound Racing");
 
             var result = await command.ExecuteScalarAsync();
             return result?.ToString();

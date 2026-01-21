@@ -19,6 +19,9 @@ public class PlaceOrderInstruction
     [JsonPropertyName("limitOrder")]
     public LimitOrder? LimitOrder { get; set; }
 
+    [JsonPropertyName("limitOnCloseOrder")]
+    public LimitOnCloseOrder? LimitOnCloseOrder { get; set; }
+
     [JsonPropertyName("marketOnCloseOrder")]
     public MarketOnCloseOrder? MarketOnCloseOrder { get; set; }
 
@@ -42,6 +45,15 @@ public class LimitOrder
 
     [JsonPropertyName("persistenceType")]
     public string PersistenceType { get; set; }
+}
+
+public class LimitOnCloseOrder
+{
+    [JsonPropertyName("price")]
+    public double Price { get; set; }
+
+    [JsonPropertyName("liability")]
+    public double Liability { get; set; }
 }
 
 public class MarketOnCloseOrder
