@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Microsoft.Data.Sqlite;
+using Npgsql;
 using Betfair.Models.Market;
 using Betfair.Models.Runner;
 using Dapper;
@@ -26,19 +26,8 @@ public class MarketBookDb
     {
         _connectionString = connectionString;
         
-        // Enable WAL mode for better concurrency (allows multiple readers + 1 writer)
-        try
-        {
-            using var connection = new SqliteConnection(_connectionString);
-            connection.Open();
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = "PRAGMA journal_mode=WAL;";
-            cmd.ExecuteNonQuery();
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"⚠️ Could not enable WAL mode: {ex.Message}");
-        }
+        // PostgreSQL doesn't need WAL mode setup (always concurrent)
+        // Removed SQLite-specific PRAGMA journal_mode=WAL
         
         try
         {
@@ -52,16 +41,22 @@ public class MarketBookDb
 
     private void VerifyHorseMarketBookSchema()
     {
-        using var connection = new SqliteConnection(_connectionString);
+        using var connection = new NpgsqlConnection(_connectionString);
         connection.Open();
+        
+        // PostgreSQL schema verification using information_schema
         var cmd = connection.CreateCommand();
-        cmd.CommandText = "PRAGMA table_info(HorseMarketBook);";
+        cmd.CommandText = @"
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'horsemarketbook' 
+            AND column_name = 'dam_year_born'";
 
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
         {
-            string colName = reader.GetString(1);
-            if (colName.Equals("DAM_YEAR_BORN", StringComparison.OrdinalIgnoreCase))
+            string colName = reader.GetString(0);
+            if (colName.Equals("dam_year_born", StringComparison.OrdinalIgnoreCase))
             {
                 // Column exists, no further action needed
             }
@@ -77,7 +72,7 @@ public class MarketBookDb
         return;
     }
 
-    using var connection = new SqliteConnection(_connectionString);
+    using var connection = new NpgsqlConnection(_connectionString);
     await connection.OpenAsync();
     using var transaction = await connection.BeginTransactionAsync();
 
@@ -113,7 +108,7 @@ public class MarketBookDb
 
                 // Check if this specific horse already exists
                 var existingHorse = await connection.ExecuteScalarAsync<int>(
-                    "SELECT COUNT(1) FROM HorseMarketBook WHERE MarketId = @MarketId AND SelectionId = @SelectionId",
+                    "SELECT COUNT(1) FROM horsemarketbook WHERE marketid = @MarketId AND selectionid = @SelectionId",
                     new { MarketId = marketId, SelectionId = runner.SelectionId });
 
                 if (existingHorse > 0)
@@ -151,7 +146,7 @@ public class MarketBookDb
                     ["JOCKEY_NAME"] = runner.JockeyName,
                     ["DAM_BRED"] = runner.DamBred,
                     ["ADJUSTED_RATING"] = ParseNullableDouble(runner.AdjustedRating),
-                    ["CLOTH_NUMBER"] = runner.ClothNumber,
+                    ["CLOTH_NUMBER"] = ParseNullableInt(runner.ClothNumber),
                     ["SIRE_YEAR_BORN"] = ParseNullableInt(runner.SireYearBorn),
                     ["TRAINER_NAME"] = runner.TrainerName,
                     ["COLOUR_TYPE"] = runner.ColourType,
@@ -169,29 +164,29 @@ public class MarketBookDb
 
                 using var command = connection.CreateCommand();
                 command.CommandText = @"
-                INSERT INTO HorseMarketBook (
-                    MarketId, MarketName, EventName, SelectionId, RUNNER_NAME, Status,
-                    SIRE_NAME, STALL_DRAW, DAMSIRE_NAME, FORM, WEIGHT_VALUE,
-                    SEX_TYPE, DAYS_SINCE_LAST_RUN, WEARING, OWNER_NAME, DAM_YEAR_BORN,
-                    SIRE_BRED, JOCKEY_NAME, DAM_BRED, CLOTH_NUMBER, SIRE_YEAR_BORN,
-                    TRAINER_NAME, COLOUR_TYPE, AGE, DAMSIRE_BRED, JOCKEY_CLAIM,
-                    FORECASTPRICE_NUMERATOR, BRED, DAM_NAME, DAMSIRE_YEAR_BORN, WEIGHT_UNITS,
-                    CLOTH_NUMBER_ALPHA, OFFICIAL_RATING, COLOURS_DESCRIPTION, COLOURS_FILENAME,
-                    FORECASTPRICE_DENOMINATOR
+                INSERT INTO horsemarketbook (
+                    marketid, marketname, eventname, selectionid, runner_name, status,
+                    sire_name, stall_draw, damsire_name, form, weight_value,
+                    sex_type, days_since_last_run, wearing, owner_name, dam_year_born,
+                    sire_bred, jockey_name, dam_bred, cloth_number, sire_year_born,
+                    trainer_name, colour_type, age, damsire_bred, jockey_claim,
+                    forecastprice_numerator, bred, dam_name, damsire_year_born, weight_units,
+                    cloth_number_alpha, official_rating, colours_description, colours_filename,
+                    forecastprice_denominator
                 ) VALUES (
-                    $MarketId, $MarketName, $EventName, $SelectionId, $RunnerName, $Status,
-                    $SIRE_NAME, $STALL_DRAW, $DAMSIRE_NAME, $FORM, $WEIGHT_VALUE,
-                    $SEX_TYPE, $DAYS_SINCE_LAST_RUN, $WEARING, $OWNER_NAME, $DAM_YEAR_BORN,
-                    $SIRE_BRED, $JOCKEY_NAME, $DAM_BRED, $CLOTH_NUMBER, $SIRE_YEAR_BORN,
-                    $TRAINER_NAME, $COLOUR_TYPE, $AGE, $DAMSIRE_BRED, $JOCKEY_CLAIM,
-                    $FORECASTPRICE_NUMERATOR, $BRED, $DAM_NAME, $DAMSIRE_YEAR_BORN, $WEIGHT_UNITS,
-                    $CLOTH_NUMBER_ALPHA, $OFFICIAL_RATING, $COLOURS_DESCRIPTION, $COLOURS_FILENAME,
-                    $FORECASTPRICE_DENOMINATOR
+                    @MarketId, @MarketName, @EventName, @SelectionId, @RunnerName, @Status,
+                    @SIRE_NAME, @STALL_DRAW, @DAMSIRE_NAME, @FORM, @WEIGHT_VALUE,
+                    @SEX_TYPE, @DAYS_SINCE_LAST_RUN, @WEARING, @OWNER_NAME, @DAM_YEAR_BORN,
+                    @SIRE_BRED, @JOCKEY_NAME, @DAM_BRED, @CLOTH_NUMBER, @SIRE_YEAR_BORN,
+                    @TRAINER_NAME, @COLOUR_TYPE, @AGE, @DAMSIRE_BRED, @JOCKEY_CLAIM,
+                    @FORECASTPRICE_NUMERATOR, @BRED, @DAM_NAME, @DAMSIRE_YEAR_BORN, @WEIGHT_UNITS,
+                    @CLOTH_NUMBER_ALPHA, @OFFICIAL_RATING, @COLOURS_DESCRIPTION, @COLOURS_FILENAME,
+                    @FORECASTPRICE_DENOMINATOR
                 )";
 
                 foreach (var kvp in paramValues)
                 {
-                    command.Parameters.AddWithValue($"${kvp.Key}", kvp.Value ?? (object)DBNull.Value);
+                    command.Parameters.AddWithValue($"@{kvp.Key}", kvp.Value ?? (object)DBNull.Value);
                 }
 
                 await command.ExecuteNonQueryAsync();
@@ -212,11 +207,8 @@ public class MarketBookDb
 
     public async Task InsertMarketBooksIntoDatabase(List<MarketBook<ApiRunner>> marketBooks)
     {
-        Console.WriteLine($"📊 InsertMarketBooksIntoDatabase called with {marketBooks?.Count ?? 0} market books");
-
         if (marketBooks == null || !marketBooks.Any())
         {
-            Console.WriteLine("❌ No market books provided to InsertMarketBooksIntoDatabase - returning early");
             return;
         }
 
@@ -226,31 +218,20 @@ public class MarketBookDb
         
         for (int attempt = 0; attempt < maxRetries; attempt++)
         {
-            SqliteTransaction? transaction = null;
+            System.Data.Common.DbTransaction? transaction = null;
             try
             {
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
-                Console.WriteLine($"🔗 Database connection opened for back/lay price insertion");
+            using var connection = new NpgsqlConnection(_connectionString);
+            await connection.OpenAsync();
                 
-                // Enable WAL mode for better concurrency
-                using (var walCommand = connection.CreateCommand())
-                {
-                    walCommand.CommandText = "PRAGMA journal_mode=WAL;";
-                    await walCommand.ExecuteNonQueryAsync();
-                }
-                
-                // Set busy timeout to 30 seconds to handle concurrent writes
-                using (var timeoutCommand = connection.CreateCommand())
-                {
-                    timeoutCommand.CommandText = "PRAGMA busy_timeout = 30000;";
-                    await timeoutCommand.ExecuteNonQueryAsync();
-                }
+                // PostgreSQL doesn't need WAL mode or busy timeout
+                // Connection pooling handles concurrency
 
-                transaction = (SqliteTransaction)await connection.BeginTransactionAsync();
+                transaction = await connection.BeginTransactionAsync();
 
                 await DeleteExistingData(connection, new List<string> { "MarketBookBackPrices", "MarketBookLayPrices" });
-                await ResetAutoIncrementCounters(connection, new List<string> { "MarketBookBackPrices", "MarketBookLayPrices" });
+                // PostgreSQL uses SERIAL, auto-increment doesn't need manual reset
+                // Removed ResetAutoIncrementCounters call
 
                 int totalBackPrices = 0;
                 int totalLayPrices = 0;
@@ -280,18 +261,18 @@ public class MarketBookDb
 
                                 using var priceCommand = connection.CreateCommand();
                                 priceCommand.CommandText = @"
-                                INSERT INTO MarketBookBackPrices
-                                (MarketId, SelectionId, Price, Size, Status, LastPriceTraded, TotalMatched)
+                                INSERT INTO marketbookbackprices
+                                (marketid, selectionid, price, size, status, lastpricetraded, totalmatched)
                                 VALUES
-                                ($MarketId, $SelectionId, $Price, $Size, $Status, $LastPriceTraded, $TotalMatched)";
+                                (@MarketId, @SelectionId, @Price, @Size, @Status, @LastPriceTraded, @TotalMatched)";
 
-                                priceCommand.Parameters.AddWithValue("$MarketId", marketId ?? (object)DBNull.Value);
-                                priceCommand.Parameters.AddWithValue("$SelectionId", runner.SelectionId);
-                                priceCommand.Parameters.AddWithValue("$Price", (double)back.Price);
-                                priceCommand.Parameters.AddWithValue("$Size", (double)back.Size);
-                                priceCommand.Parameters.AddWithValue("$Status", runner.Status ?? (object)DBNull.Value);
-                                priceCommand.Parameters.AddWithValue("$LastPriceTraded", runner.LastPriceTraded ?? (object)DBNull.Value);
-                                priceCommand.Parameters.AddWithValue("$TotalMatched", runner.TotalMatched ?? (object)DBNull.Value);
+                                priceCommand.Parameters.AddWithValue("@MarketId", marketId ?? (object)DBNull.Value);
+                                priceCommand.Parameters.AddWithValue("@SelectionId", runner.SelectionId);
+                                priceCommand.Parameters.AddWithValue("@Price", (double)back.Price);
+                                priceCommand.Parameters.AddWithValue("@Size", (double)back.Size);
+                                priceCommand.Parameters.AddWithValue("@Status", runner.Status ?? (object)DBNull.Value);
+                                priceCommand.Parameters.AddWithValue("@LastPriceTraded", runner.LastPriceTraded ?? (object)DBNull.Value);
+                                priceCommand.Parameters.AddWithValue("@TotalMatched", runner.TotalMatched ?? (object)DBNull.Value);
 
                                 await priceCommand.ExecuteNonQueryAsync();
                                 totalBackPrices++;
@@ -308,18 +289,18 @@ public class MarketBookDb
 
                                 using var priceCommand = connection.CreateCommand();
                                 priceCommand.CommandText = @"
-                                INSERT INTO MarketBookLayPrices
-                                (MarketId, SelectionId, Price, Size, Status, LastPriceTraded, TotalMatched)
+                                INSERT INTO marketbooklayprices
+                                (marketid, selectionid, price, size, status, lastpricetraded, totalmatched)
                                 VALUES
-                                ($MarketId, $SelectionId, $Price, $Size, $Status, $LastPriceTraded, $TotalMatched)";
+                                (@MarketId, @SelectionId, @Price, @Size, @Status, @LastPriceTraded, @TotalMatched)";
 
-                                priceCommand.Parameters.AddWithValue("$MarketId", marketId ?? (object)DBNull.Value);
-                                priceCommand.Parameters.AddWithValue("$SelectionId", runner.SelectionId);
-                                priceCommand.Parameters.AddWithValue("$Price", (double)lay.Price);
-                                priceCommand.Parameters.AddWithValue("$Size", (double)lay.Size);
-                                priceCommand.Parameters.AddWithValue("$Status", runner.Status ?? (object)DBNull.Value);
-                                priceCommand.Parameters.AddWithValue("$LastPriceTraded", runner.LastPriceTraded ?? (object)DBNull.Value);
-                                priceCommand.Parameters.AddWithValue("$TotalMatched", runner.TotalMatched ?? (object)DBNull.Value);
+                                priceCommand.Parameters.AddWithValue("@MarketId", marketId ?? (object)DBNull.Value);
+                                priceCommand.Parameters.AddWithValue("@SelectionId", runner.SelectionId);
+                                priceCommand.Parameters.AddWithValue("@Price", (double)lay.Price);
+                                priceCommand.Parameters.AddWithValue("@Size", (double)lay.Size);
+                                priceCommand.Parameters.AddWithValue("@Status", runner.Status ?? (object)DBNull.Value);
+                                priceCommand.Parameters.AddWithValue("@LastPriceTraded", runner.LastPriceTraded ?? (object)DBNull.Value);
+                                priceCommand.Parameters.AddWithValue("@TotalMatched", runner.TotalMatched ?? (object)DBNull.Value);
 
                                 await priceCommand.ExecuteNonQueryAsync();
                                 totalLayPrices++;
@@ -342,14 +323,14 @@ public class MarketBookDb
                 // Success - break out of retry loop
                 return;
             }
-            catch (SqliteException ex) when (ex.SqliteErrorCode == 5 && attempt < maxRetries - 1) // SQLite BUSY
+            catch (Npgsql.PostgresException ex) when (attempt < maxRetries - 1) // PostgreSQL deadlock or serialization failure
             {
                 if (transaction != null)
                 {
                     await transaction.RollbackAsync();
                     transaction.Dispose();
                 }
-                Console.WriteLine($"⚠️ Database locked (attempt {attempt + 1}/{maxRetries}), retrying in {retryDelayMs}ms...");
+                Console.WriteLine($"⚠️ Database error (attempt {attempt + 1}/{maxRetries}), retrying in {retryDelayMs}ms...");
                 await Task.Delay(retryDelayMs);
                 retryDelayMs *= 2; // Exponential backoff
             }
@@ -405,20 +386,17 @@ public class MarketBookDb
 
     public async Task InsertGreyhoundMarketBooksIntoDatabase(List<MarketBook<ApiRunner>> marketBooks)
     {
-        Console.WriteLine($"🔗 Opening database connection for {marketBooks.Count} greyhound market books");
-        using var connection = new SqliteConnection(_connectionString);
+        using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync();
         using var transaction = await connection.BeginTransactionAsync();
 
         try
         {
-            Console.WriteLine($"📊 Processing {marketBooks.Count} greyhound market books for database insertion");
             int totalInserted = 0;
             foreach (var marketBook in marketBooks)
             {
                 string marketId = marketBook.MarketId;
                 var marketInfo = await GetMarketNameAndEventNameByMarketId(connection, marketId);
-                Console.WriteLine($"🔍 Processing market {marketId}: {marketInfo?.MarketName} - {marketInfo?.EventName}");
 
                 // Parse EventName to extract Venue and EventDate
                 var (venue, eventDate) = ParseEventName(marketInfo?.EventName);
@@ -434,24 +412,35 @@ public class MarketBookDb
                         {
                             using var command = connection.CreateCommand();
                             command.CommandText = @"
-                                INSERT INTO GreyhoundMarketBook
-                                (MarketId, MarketName, SelectionId, Status, PriceType, Price, Size, RunnerName, Venue, EventDate, EventName, box, RunnerId)
+                                INSERT INTO greyhoundmarketbook
+                                (marketid, marketname, selectionid, status, pricetype, price, size, runnername, venue, eventdate, eventname, box, runnerid)
                                 VALUES
-                                ($MarketId, $MarketName, $SelectionId, $Status, $PriceType, $Price, $Size, $RunnerName, $Venue, $EventDate, $EventName, $box, $RunnerId)";
+                                (@MarketId, @MarketName, @SelectionId, @Status, @PriceType, @Price, @Size, @RunnerName, @Venue, @EventDate, @EventName, @box, @RunnerId)
+                                ON CONFLICT (marketid, selectionid, pricetype, price) 
+                                DO UPDATE SET 
+                                    size = EXCLUDED.size,
+                                    status = EXCLUDED.status,
+                                    marketname = EXCLUDED.marketname,
+                                    runnername = EXCLUDED.runnername,
+                                    venue = EXCLUDED.venue,
+                                    eventdate = EXCLUDED.eventdate,
+                                    eventname = EXCLUDED.eventname,
+                                    box = EXCLUDED.box,
+                                    runnerid = EXCLUDED.runnerid";
 
-                            command.Parameters.AddWithValue("$MarketId", marketId ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("$MarketName", marketInfo?.MarketName ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("$SelectionId", runner.SelectionId);
-                            command.Parameters.AddWithValue("$Status", runner.Status ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("$PriceType", "AvailableToBack");
-                            command.Parameters.AddWithValue("$Price", (double)back.Price);
-                            command.Parameters.AddWithValue("$Size", (double)back.Size);
-                            command.Parameters.AddWithValue("$RunnerName", cleanRunnerName ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("$Venue", venue ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("$EventDate", eventDate ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("$EventName", marketInfo?.EventName ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("$box", boxNumber.HasValue ? boxNumber.Value : (object)DBNull.Value);
-                            command.Parameters.AddWithValue("$RunnerId", runner.SelectionId); // Use SelectionId as RunnerId for greyhounds
+                            command.Parameters.AddWithValue("@MarketId", marketId ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("@MarketName", marketInfo?.MarketName ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("@SelectionId", runner.SelectionId);
+                            command.Parameters.AddWithValue("@Status", runner.Status ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("@PriceType", "AvailableToBack");
+                            command.Parameters.AddWithValue("@Price", (double)back.Price);
+                            command.Parameters.AddWithValue("@Size", (double)back.Size);
+                            command.Parameters.AddWithValue("@RunnerName", cleanRunnerName ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("@Venue", venue ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("@EventDate", eventDate ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("@EventName", marketInfo?.EventName ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("@box", boxNumber.HasValue ? boxNumber.Value : (object)DBNull.Value);
+                            command.Parameters.AddWithValue("@RunnerId", runner.SelectionId); // Use SelectionId as RunnerId for greyhounds
 
                             await command.ExecuteNonQueryAsync();
                             totalInserted++;
@@ -464,24 +453,35 @@ public class MarketBookDb
                         {
                             using var command = connection.CreateCommand();
                             command.CommandText = @"
-                                INSERT INTO GreyhoundMarketBook
-                                (MarketId, MarketName, SelectionId, Status, PriceType, Price, Size, RunnerName, Venue, EventDate, EventName, box, RunnerId)
+                                INSERT INTO greyhoundmarketbook
+                                (marketid, marketname, selectionid, status, pricetype, price, size, runnername, venue, eventdate, eventname, box, runnerid)
                                 VALUES
-                                ($MarketId, $MarketName, $SelectionId, $Status, $PriceType, $Price, $Size, $RunnerName, $Venue, $EventDate, $EventName, $box, $RunnerId)";
+                                (@MarketId, @MarketName, @SelectionId, @Status, @PriceType, @Price, @Size, @RunnerName, @Venue, @EventDate, @EventName, @box, @RunnerId)
+                                ON CONFLICT (marketid, selectionid, pricetype, price) 
+                                DO UPDATE SET 
+                                    size = EXCLUDED.size,
+                                    status = EXCLUDED.status,
+                                    marketname = EXCLUDED.marketname,
+                                    runnername = EXCLUDED.runnername,
+                                    venue = EXCLUDED.venue,
+                                    eventdate = EXCLUDED.eventdate,
+                                    eventname = EXCLUDED.eventname,
+                                    box = EXCLUDED.box,
+                                    runnerid = EXCLUDED.runnerid";
 
-                            command.Parameters.AddWithValue("$MarketId", marketId ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("$MarketName", marketInfo?.MarketName ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("$SelectionId", runner.SelectionId);
-                            command.Parameters.AddWithValue("$Status", runner.Status ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("$PriceType", "AvailableToLay");
-                            command.Parameters.AddWithValue("$Price", (double)lay.Price);
-                            command.Parameters.AddWithValue("$Size", (double)lay.Size);
-                            command.Parameters.AddWithValue("$RunnerName", cleanRunnerName ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("$Venue", venue ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("$EventDate", eventDate ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("$EventName", marketInfo?.EventName ?? (object)DBNull.Value);
-                            command.Parameters.AddWithValue("$box", boxNumber.HasValue ? boxNumber.Value : (object)DBNull.Value);
-                            command.Parameters.AddWithValue("$RunnerId", runner.SelectionId); // Use SelectionId as RunnerId for greyhounds
+                            command.Parameters.AddWithValue("@MarketId", marketId ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("@MarketName", marketInfo?.MarketName ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("@SelectionId", runner.SelectionId);
+                            command.Parameters.AddWithValue("@Status", runner.Status ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("@PriceType", "AvailableToLay");
+                            command.Parameters.AddWithValue("@Price", (double)lay.Price);
+                            command.Parameters.AddWithValue("@Size", (double)lay.Size);
+                            command.Parameters.AddWithValue("@RunnerName", cleanRunnerName ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("@Venue", venue ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("@EventDate", eventDate ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("@EventName", marketInfo?.EventName ?? (object)DBNull.Value);
+                            command.Parameters.AddWithValue("@box", boxNumber.HasValue ? boxNumber.Value : (object)DBNull.Value);
+                            command.Parameters.AddWithValue("@RunnerId", runner.SelectionId); // Use SelectionId as RunnerId for greyhounds
 
                             await command.ExecuteNonQueryAsync();
                             totalInserted++;
@@ -490,7 +490,6 @@ public class MarketBookDb
                 }
             }
             await transaction.CommitAsync();
-            Console.WriteLine($"✅ Greyhound market books inserted successfully. Total records inserted: {totalInserted}");
         }
         catch (Exception ex)
         {
@@ -502,24 +501,24 @@ public class MarketBookDb
 
     public async Task<List<HorseMarketBook>> GetHorseMarketBooksAsync()
 {
-    using var connection = new SqliteConnection(_connectionString);
+    using var connection = new NpgsqlConnection(_connectionString);
     await connection.OpenAsync();
 
-    var query = @"SELECT MarketId, MarketName, EventName, SelectionId, RUNNER_NAME as RunnerName, Status, SIRE_NAME as SireName, DAMSIRE_NAME as DamsireName, TRAINER_NAME as TrainerName, AGE, WEIGHT_VALUE as WeightValue, COLOUR_TYPE as ColourType, FORM FROM HorseMarketBook";
+    var query = @"SELECT marketid as MarketId, marketname as MarketName, eventname as EventName, selectionid as SelectionId, runner_name as RunnerName, status as Status, sire_name as SireName, damsire_name as DamsireName, trainer_name as TrainerName, age as AGE, weight_value as WeightValue, colour_type as ColourType, form as FORM FROM horsemarketbook";
     var result = await connection.QueryAsync<HorseMarketBook>(query);
 
     return result.ToList();
 }
 
-    private async Task<MarketInfo> GetMarketNameAndEventNameByMarketId(SqliteConnection connection, string marketId)
+    private async Task<MarketInfo> GetMarketNameAndEventNameByMarketId(NpgsqlConnection connection, string marketId)
     {
         using var command = connection.CreateCommand();
         command.CommandText = @"
-        SELECT MarketName, EventName
-        FROM EventMarkets
-        WHERE MarketId = $MarketId
+        SELECT marketname, eventname
+        FROM eventmarkets
+        WHERE marketid = @MarketId
         LIMIT 1";
-        command.Parameters.AddWithValue("$MarketId", marketId);
+        command.Parameters.AddWithValue("@MarketId", marketId);
 
         using var reader = await command.ExecuteReaderAsync();
         if (await reader.ReadAsync())
@@ -541,24 +540,24 @@ public class MarketBookDb
     private static double? ParseNullableDouble(string input) =>
         double.TryParse(input, out var result) ? result : null;
 
-    private async Task DeleteExistingData(SqliteConnection connection, List<string> tableNames)
+    private async Task DeleteExistingData(NpgsqlConnection connection, List<string> tableNames)
     {
         // Method removed as per request to avoid deletion logic.
     }
 
-    private async Task<bool> IsDataExist(SqliteConnection connection, string tableName, object marketId, object selectionId, object price)
+    private async Task<bool> IsDataExist(NpgsqlConnection connection, string tableName, object marketId, object selectionId, object price)
     {
         using var command = connection.CreateCommand();
         command.CommandText = $@"
         SELECT COUNT(1)
-        FROM {tableName}
-        WHERE MarketId = $MarketId
-        AND SelectionId = $SelectionId
-        AND Price = $Price";
+        FROM {tableName.ToLower()}
+        WHERE marketid = @MarketId
+        AND selectionid = @SelectionId
+        AND price = @Price";
 
-        command.Parameters.AddWithValue("$MarketId", marketId);
-        command.Parameters.AddWithValue("$SelectionId", selectionId);
-        command.Parameters.AddWithValue("$Price", price ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@MarketId", marketId);
+        command.Parameters.AddWithValue("@SelectionId", selectionId);
+        command.Parameters.AddWithValue("@Price", price ?? (object)DBNull.Value);
 
         //Console.WriteLine($"Checking if data exists in table {tableName} for MarketId: {marketId}, SelectionId: {selectionId}, Price: {price}");
         var count = await command.ExecuteScalarAsync();
@@ -566,20 +565,18 @@ public class MarketBookDb
         return (long)count > 0;
     }
 
-    private async Task ResetAutoIncrementCounters(SqliteConnection connection, List<string> tableNames)
+    // PostgreSQL uses SERIAL auto-increment, doesn't need manual reset
+    // This method was for SQLite's sqlite_sequence table
+    private async Task ResetAutoIncrementCounters(NpgsqlConnection connection, List<string> tableNames)
     {
-        foreach (var table in tableNames)
-        {
-            using var resetCommand = connection.CreateCommand();
-            resetCommand.CommandText = $"DELETE FROM SQLITE_SEQUENCE WHERE NAME = '{table}'";
-            await resetCommand.ExecuteNonQueryAsync();
-        }
+        // No-op for PostgreSQL
+        await Task.CompletedTask;
     }
 
-    private async Task DeleteExistingHorseRecord(SqliteConnection connection, string marketId, long selectionId)
+    private async Task DeleteExistingHorseRecord(NpgsqlConnection connection, string marketId, long selectionId)
     {
         using var deleteCommand = connection.CreateCommand();
-        deleteCommand.CommandText = "DELETE FROM HorseMarketBook WHERE MarketId = @MarketId AND SelectionId = @SelectionId";
+        deleteCommand.CommandText = "DELETE FROM horsemarketbook WHERE marketid = @MarketId AND selectionid = @SelectionId";
         deleteCommand.Parameters.AddWithValue("@MarketId", marketId);
         deleteCommand.Parameters.AddWithValue("@SelectionId", selectionId);
         await deleteCommand.ExecuteNonQueryAsync();
@@ -592,14 +589,14 @@ public class MarketBookDb
 
     public async Task<object> GetHorseBackAndLayOddsAsync(long selectionId)
     {
-        using var connection = new SqliteConnection(_connectionString);
+        using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync();
 
-        // First, get horse details from HorseMarketBook
+        // First, get horse details from horsemarketbook
         var horseQuery = @"
-            SELECT MarketId, MarketName, EventName, RUNNER_NAME 
-            FROM HorseMarketBook 
-            WHERE SelectionId = @SelectionId 
+            SELECT marketid, marketname, eventname, runner_name 
+            FROM horsemarketbook 
+            WHERE selectionid = @SelectionId 
             LIMIT 1";
 
         var horseInfo = await connection.QueryFirstOrDefaultAsync(horseQuery, new { SelectionId = selectionId });
@@ -609,21 +606,21 @@ public class MarketBookDb
             return new { Error = $"Horse with SelectionId {selectionId} not found" };
         }
 
-        // Get back odds from MarketBookBackPrices table
+        // Get back odds from marketbookbackprices table
         var backOddsQuery = @"
-            SELECT Price, Size, MarketId
-            FROM MarketBookBackPrices 
-            WHERE SelectionId = @SelectionId 
-            ORDER BY Price DESC";
+            SELECT price, size, marketid
+            FROM marketbookbackprices 
+            WHERE selectionid = @SelectionId 
+            ORDER BY price DESC";
 
         var backOdds = await connection.QueryAsync(backOddsQuery, new { SelectionId = selectionId });
 
-        // Get lay odds from MarketBookLayPrices table
+        // Get lay odds from marketbooklayprices table
         var layOddsQuery = @"
-            SELECT Price, Size, MarketId
-            FROM MarketBookLayPrices 
-            WHERE SelectionId = @SelectionId 
-            ORDER BY Price ASC";
+            SELECT price, size, marketid
+            FROM marketbooklayprices 
+            WHERE selectionid = @SelectionId 
+            ORDER BY price ASC";
 
         var layOdds = await connection.QueryAsync(layOddsQuery, new { SelectionId = selectionId });
 
@@ -632,13 +629,13 @@ public class MarketBookDb
             Horse = new
             {
                 SelectionId = selectionId,
-                Name = horseInfo.RUNNER_NAME,
-                MarketId = horseInfo.MarketId,
-                MarketName = horseInfo.MarketName,
-                EventName = horseInfo.EventName
+                Name = horseInfo.runner_name,
+                MarketId = horseInfo.marketid,
+                MarketName = horseInfo.marketname,
+                EventName = horseInfo.eventname
             },
-            BackOdds = backOdds.Select(b => new { Price = b.Price, Size = b.Size, MarketId = b.MarketId }),
-            LayOdds = layOdds.Select(l => new { Price = l.Price, Size = l.Size, MarketId = l.MarketId })
+            BackOdds = backOdds.Select(b => new { Price = b.price, Size = b.size, MarketId = b.marketid }),
+            LayOdds = layOdds.Select(l => new { Price = l.price, Size = l.size, MarketId = l.marketid })
         };
     }
 }

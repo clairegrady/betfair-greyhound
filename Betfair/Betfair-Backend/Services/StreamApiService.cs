@@ -12,7 +12,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Data.Sqlite;
+using Npgsql;
 using Betfair.Models;
 using Betfair.Settings;
 
@@ -86,7 +86,6 @@ namespace Betfair.Services
 
                 _ = Task.Run(ReceiveMessagesAsync);
 
-                _logger.LogInformation("Connected to Betfair Stream API");
                 return true;
             }
             catch (Exception ex)
@@ -137,17 +136,14 @@ namespace Betfair.Services
                         "EX_MARKET_DEF",
                         "EX_LTP" // Last Traded Price
                     },
-                    ladderLevels = 3
+                    ladderLevels = 10
                 },
                 segmentationEnabled = true,
                 conflateMs = 0,
                 heartbeatMs = 5000
             };
 
-            var json = JsonSerializer.Serialize(message);
-            _logger.LogWarning("Sending market subscription: {json}", json);
             await SendMessageAsync(message);
-            _logger.LogInformation("Subscribed to market {marketId} with BSP projections", marketId);
         }
 
         public async Task SubscribeToMarketsAsync(List<string> eventTypeIds = null, List<string> marketTypes = null, List<string> countryCodes = null, TimeSpan? timeWindow = null)
@@ -189,19 +185,14 @@ namespace Betfair.Services
                         "EX_MARKET_DEF",
                         "EX_LTP" // Last Traded Price
                     },
-                    ladderLevels = 3
+                    ladderLevels = 10
                 },
                 segmentationEnabled = true,
                 conflateMs = 0,
                 heartbeatMs = 5000
             };
 
-            var json = JsonSerializer.Serialize(message);
-            _logger.LogWarning("Sending market subscription with filters: {json}", json);
             await SendMessageAsync(message);
-            _logger.LogInformation("Subscribed to markets with filters: EventTypes={EventTypes}, MarketTypes={MarketTypes}", 
-                string.Join(",", eventTypeIds ?? new List<string>()), 
-                string.Join(",", marketTypes ?? new List<string>()));
         }
 
         public async Task SubscribeToOrdersAsync()
@@ -215,12 +206,10 @@ namespace Betfair.Services
             };
 
             await SendMessageAsync(message);
-            _logger.LogInformation("Subscribed to order changes");
         }
 
         public async Task UnsubscribeFromMarketAsync(string marketId)
         {
-            _logger.LogInformation("Unsubscribed from market {marketId}", marketId);
             await Task.CompletedTask;
         }
 
@@ -228,7 +217,6 @@ namespace Betfair.Services
         {
             var message = new { id = ++_messageId, op = "heartbeat" };
             await SendMessageAsync(message);
-            _logger.LogInformation("Heartbeat sent");
         }
 
         private async Task SendAuthenticationMessage(string appKey, string sessionToken)
@@ -273,7 +261,6 @@ namespace Betfair.Services
                 if (response != null && response.StatusCode == "SUCCESS")
                 {
                     _authenticated = true;
-                    _logger.LogInformation("✅ Authentication successful");
                 }
                 else
                 {
@@ -320,7 +307,6 @@ namespace Betfair.Services
                 {
                     case "connection":
                         var connectionMsg = JsonSerializer.Deserialize<ConnectionMessage>(message);
-                        _logger.LogInformation("Connection established: {connectionId}", connectionMsg?.ConnectionId);
                         _connectionReceived = true;
                         _connectionSemaphore.Release();
 
@@ -357,11 +343,9 @@ namespace Betfair.Services
                         break;
 
                     case "heartbeat":
-                        _logger.LogDebug("Heartbeat received");
                         break;
 
                     default:
-                        _logger.LogWarning("Unknown message type: {op}", op);
                         break;
                 }
             }
@@ -501,17 +485,15 @@ namespace Betfair.Services
             if (marketChange.MarketDefinition?.Runners == null)
             {
                 _logger.LogWarning("No market definition runners found for runner {runnerId}, assuming active", runnerId);
-                return true; // If no market definition, assume active
+                return true;
             }
             
             var runner = marketChange.MarketDefinition.Runners.FirstOrDefault(r => r.Id == runnerId);
             if (runner == null)
             {
-                _logger.LogWarning("Runner {runnerId} not found in market definition, assuming active", runnerId);
-                return true; // If runner not found in definition, assume active
+                return true;
             }
             
-            _logger.LogWarning("Runner {runnerId} status: {runnerStatus}", runnerId, runner.Status);
             return runner.Status == "ACTIVE";
         }
 
@@ -533,27 +515,27 @@ namespace Betfair.Services
                         _logger.LogDebug($"🔄 Storing BSP projection for market {marketId}, runner {runnerChange.Id}: Spn={runnerChange.Spn}");
                     }
                     
-                    using var connection = new SqliteConnection(_connectionString);
+                    using var connection = new NpgsqlConnection(_connectionString);
                     await connection.OpenAsync();
-                    
-                    // Increase busy timeout to 60 seconds
-                    using (var timeoutCommand = connection.CreateCommand())
-                    {
-                        timeoutCommand.CommandText = "PRAGMA busy_timeout = 60000;";
-                        await timeoutCommand.ExecuteNonQueryAsync();
-                    }
 
                     var nearPrice = runnerChange.Spn;
                     var farPrice = (object)DBNull.Value; // Not using Spf anymore
                     var average = nearPrice; // Use Spn as the average BSP
 
                     var insertQuery = @"
-                    INSERT OR REPLACE INTO StreamBspProjections
-                    (MarketId, SelectionId, RunnerName, NearPrice, FarPrice, Average, UpdatedAt)
+                    INSERT INTO streambspprojections
+                    (marketid, selectionid, runnername, nearprice, farprice, average, updatedat)
                     VALUES
-                    (@MarketId, @SelectionId, @RunnerName, @NearPrice, @FarPrice, @Average, @UpdatedAt)";
+                    (@MarketId, @SelectionId, @RunnerName, @NearPrice, @FarPrice, @Average, @UpdatedAt)
+                    ON CONFLICT (marketid, selectionid) 
+                    DO UPDATE SET 
+                        runnername = EXCLUDED.runnername,
+                        nearprice = EXCLUDED.nearprice,
+                        farprice = EXCLUDED.farprice,
+                        average = EXCLUDED.average,
+                        updatedat = EXCLUDED.updatedat";
 
-                    using var command = new SqliteCommand(insertQuery, connection);
+                    using var command = new NpgsqlCommand(insertQuery, connection);
                     command.Parameters.AddWithValue("@MarketId", marketId);
                     command.Parameters.AddWithValue("@SelectionId", runnerChange.Id);
                     command.Parameters.AddWithValue("@RunnerName", $"Runner {runnerChange.Id}");
@@ -573,10 +555,9 @@ namespace Betfair.Services
                     _dbSemaphore.Release();
                     return; // Success - exit
                 }
-                catch (SqliteException ex) when ((ex.SqliteErrorCode == 5 || ex.SqliteErrorCode == 6) && attempt < maxRetries - 1)
+                catch (Npgsql.PostgresException ex) when (attempt < maxRetries - 1)
                 {
-                    // SQLite Error 5 = database locked, Error 6 = table locked
-                    _logger.LogDebug($"⚠️ Database locked (attempt {attempt + 1}/{maxRetries}), retrying in {retryDelayMs}ms...");
+                    // PostgreSQL serialization/deadlock errors
                     await Task.Delay(retryDelayMs);
                     retryDelayMs *= 2; // Exponential backoff
                 }
@@ -589,7 +570,6 @@ namespace Betfair.Services
             }
             
             // All retries exhausted
-            _logger.LogWarning("⚠️ Failed to store BSP after {maxRetries} attempts: market {marketId}, runner {runnerId}", maxRetries, marketId, runnerChange.Id);
             _dbSemaphore.Release();
         }
 
@@ -597,23 +577,21 @@ namespace Betfair.Services
         {
             try
             {
-                using var connection = new SqliteConnection(_connectionString);
+                using var connection = new NpgsqlConnection(_connectionString);
                 await connection.OpenAsync();
-                
-                // Set busy timeout to 30 seconds to handle concurrent writes
-                using (var timeoutCommand = connection.CreateCommand())
-                {
-                    timeoutCommand.CommandText = "PRAGMA busy_timeout = 30000;";
-                    await timeoutCommand.ExecuteNonQueryAsync();
-                }
 
                 var insertQuery = @"
-                INSERT OR REPLACE INTO StreamLtpData
-                (MarketId, SelectionId, RunnerName, LastTradedPrice, UpdatedAt)
+                INSERT INTO streamltpdata
+                (marketid, selectionid, runnername, lasttradedprice, updatedat)
                 VALUES
-                (@MarketId, @SelectionId, @RunnerName, @LastTradedPrice, @UpdatedAt)";
+                (@MarketId, @SelectionId, @RunnerName, @LastTradedPrice, @UpdatedAt)
+                ON CONFLICT (marketid, selectionid) 
+                DO UPDATE SET 
+                    runnername = EXCLUDED.runnername,
+                    lasttradedprice = EXCLUDED.lasttradedprice,
+                    updatedat = EXCLUDED.updatedat";
 
-                using var command = new SqliteCommand(insertQuery, connection);
+                using var command = new NpgsqlCommand(insertQuery, connection);
                 command.Parameters.AddWithValue("@MarketId", marketId);
                 command.Parameters.AddWithValue("@SelectionId", runnerChange.Id);
                 command.Parameters.AddWithValue("@RunnerName", $"Runner {runnerChange.Id}");
@@ -621,7 +599,6 @@ namespace Betfair.Services
                 command.Parameters.AddWithValue("@UpdatedAt", DateTime.UtcNow);
 
                 var rowsAffected = await command.ExecuteNonQueryAsync();
-                _logger.LogWarning("✅ Successfully stored LTP data for market {marketId}, runner {runnerId}: Ltp={ltp} (Rows affected: {rowsAffected})", marketId, runnerChange.Id, runnerChange.Ltp, rowsAffected);
             }
             catch (Exception ex)
             {
@@ -641,33 +618,50 @@ namespace Betfair.Services
                 
                 if (string.IsNullOrEmpty(eventTypeId))
                 {
-                    // Look up event type from database (check both tables)
-                    using var lookupConn = new SqliteConnection(_connectionString);
+                    // Look up event type from marketcatalogue table
+                    using var lookupConn = new NpgsqlConnection(_connectionString);
                     await lookupConn.OpenAsync();
                     
-                    using (var timeoutCommand = lookupConn.CreateCommand())
-                    {
-                        timeoutCommand.CommandText = "PRAGMA busy_timeout = 60000;";
-                        await timeoutCommand.ExecuteNonQueryAsync();
-                    }
-                    
-                    // Try greyhound table first
-                    var query = "SELECT COUNT(*) FROM GreyhoundMarketBook WHERE MarketId = @MarketId LIMIT 1";
-                    using (var command = new SqliteCommand(query, lookupConn))
+                    // Check marketcatalogue first (most reliable source)
+                    var query = "SELECT eventtypename FROM marketcatalogue WHERE marketid = @MarketId LIMIT 1";
+                    using (var command = new NpgsqlCommand(query, lookupConn))
                     {
                         command.Parameters.AddWithValue("@MarketId", marketId);
-                        var count = Convert.ToInt32(await command.ExecuteScalarAsync());
-                        if (count > 0)
+                        var eventTypeName = await command.ExecuteScalarAsync() as string;
+                        
+                        if (eventTypeName != null)
                         {
-                            eventTypeId = "4339"; // Greyhound
+                            if (eventTypeName.Contains("Greyhound", StringComparison.OrdinalIgnoreCase))
+                            {
+                                eventTypeId = "4339"; // Greyhound
+                            }
+                            else if (eventTypeName.Contains("Horse", StringComparison.OrdinalIgnoreCase))
+                            {
+                                eventTypeId = "7"; // Horse
+                            }
+                        }
+                    }
+                    
+                    // If still not found, try greyhound table
+                    if (string.IsNullOrEmpty(eventTypeId))
+                    {
+                        query = "SELECT COUNT(*) FROM greyhoundmarketbook WHERE marketid = @MarketId LIMIT 1";
+                        using (var command = new NpgsqlCommand(query, lookupConn))
+                        {
+                            command.Parameters.AddWithValue("@MarketId", marketId);
+                            var count = Convert.ToInt32(await command.ExecuteScalarAsync());
+                            if (count > 0)
+                            {
+                                eventTypeId = "4339"; // Greyhound
+                            }
                         }
                     }
                     
                     // If not greyhound, try horse table
                     if (string.IsNullOrEmpty(eventTypeId))
                     {
-                        query = "SELECT COUNT(*) FROM HorseMarketBook WHERE MarketId = @MarketId LIMIT 1";
-                        using (var command = new SqliteCommand(query, lookupConn))
+                        query = "SELECT COUNT(*) FROM horsemarketbook WHERE marketid = @MarketId LIMIT 1";
+                        using (var command = new NpgsqlCommand(query, lookupConn))
                         {
                             command.Parameters.AddWithValue("@MarketId", marketId);
                             var count = Convert.ToInt32(await command.ExecuteScalarAsync());
@@ -685,18 +679,61 @@ namespace Betfair.Services
                     return; // Skip non-racing markets
                 }
                 
-                string tableName = eventTypeId == "4339" ? "GreyhoundMarketBook" : "HorseMarketBook";
-                string runnerNameCol = eventTypeId == "4339" ? "RunnerName" : "RUNNER_NAME";
-                string boxCol = eventTypeId == "4339" ? "box" : "STALL_DRAW";
-                string runnerIdCol = eventTypeId == "4339" ? "RunnerId" : "RUNNER_ID";
+                string tableName = eventTypeId == "4339" ? "greyhoundmarketbook" : "horsemarketbook";
+                string runnerNameCol = eventTypeId == "4339" ? "runnername" : "runner_name";
+                string boxCol = eventTypeId == "4339" ? "box" : "stall_draw";
+                string runnerIdCol = eventTypeId == "4339" ? "runnerid" : "runner_id";
                 
-                using var connection = new SqliteConnection(_connectionString);
+                using var connection = new NpgsqlConnection(_connectionString);
                 await connection.OpenAsync();
-                
-                using (var timeoutCommand = connection.CreateCommand())
+
+                // FIRST: If we have a MarketDefinition with runners, ensure ALL runners are stored
+                // This ensures we see all 8 dogs even if only 2 have price activity
+                if (marketChange.MarketDefinition?.Runners != null && marketChange.MarketDefinition.Runners.Count > 0)
                 {
-                    timeoutCommand.CommandText = "PRAGMA busy_timeout = 60000;";
-                    await timeoutCommand.ExecuteNonQueryAsync();
+                    foreach (var runnerDef in marketChange.MarketDefinition.Runners)
+                    {
+                        // Check if this runner already has data in the table
+                        var checkQuery = $"SELECT COUNT(*) FROM {tableName} WHERE marketid = @MarketId AND selectionid = @SelectionId";
+                        using (var checkCmd = new NpgsqlCommand(checkQuery, connection))
+                        {
+                            checkCmd.Parameters.AddWithValue("@MarketId", marketId);
+                            checkCmd.Parameters.AddWithValue("@SelectionId", runnerDef.Id);
+                            var count = (long)await checkCmd.ExecuteScalarAsync();
+                            
+                            // If runner doesn't exist, insert a placeholder with just the runner info (no prices)
+                            if (count == 0)
+                            {
+                                var runnerName = runnerDef.Name ?? $"Runner {runnerDef.Id}";
+                                var status = runnerDef.Status ?? "ACTIVE";
+                                var boxNumber = runnerDef.SortPriority;
+                                var venue = marketChange.MarketDefinition.Venue;
+                                var eventDate = marketChange.MarketDefinition.MarketTime?.ToString("yyyy-MM-dd HH:mm:ss");
+                                var eventName = marketChange.MarketDefinition.Event?.Name;
+                                
+                                var placeholderInsert = $@"
+                                    INSERT INTO {tableName} 
+                                    (marketid, marketname, selectionid, status, pricetype, price, size, {runnerNameCol}, venue, eventdate, eventname, {boxCol}, {runnerIdCol})
+                                    VALUES (@MarketId, @MarketName, @SelectionId, @Status, 'NO_PRICES', 0, 0, @RunnerName, @Venue, @EventDate, @EventName, @Box, @RunnerId)";
+                                
+                                using (var insertCmd = new NpgsqlCommand(placeholderInsert, connection))
+                                {
+                                    insertCmd.Parameters.AddWithValue("@MarketId", marketId);
+                                    insertCmd.Parameters.AddWithValue("@MarketName", marketChange.MarketDefinition?.MarketType ?? "WIN");
+                                    insertCmd.Parameters.AddWithValue("@SelectionId", runnerDef.Id);
+                                    insertCmd.Parameters.AddWithValue("@Status", status);
+                                    insertCmd.Parameters.AddWithValue("@RunnerName", runnerName ?? (object)DBNull.Value);
+                                    insertCmd.Parameters.AddWithValue("@Venue", venue ?? (object)DBNull.Value);
+                                    insertCmd.Parameters.AddWithValue("@EventDate", eventDate ?? (object)DBNull.Value);
+                                    insertCmd.Parameters.AddWithValue("@EventName", eventName ?? (object)DBNull.Value);
+                                    insertCmd.Parameters.AddWithValue("@Box", boxNumber.HasValue ? (object)boxNumber.Value : DBNull.Value);
+                                    insertCmd.Parameters.AddWithValue("@RunnerId", runnerDef.Id.ToString());
+                                    
+                                    await insertCmd.ExecuteNonQueryAsync();
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Get existing runner metadata (names, venue, etc.) from database
@@ -707,7 +744,7 @@ namespace Betfair.Services
                     LIMIT 100";
                 
                 var runnerMetadata = new Dictionary<long, (string name, string venue, string eventDate, string eventName, double? box, string runnerId)>();
-                using (var metaCommand = new SqliteCommand(metadataQuery, connection))
+                using (var metaCommand = new NpgsqlCommand(metadataQuery, connection))
                 {
                     metaCommand.Parameters.AddWithValue("@MarketId", marketId);
                     using var reader = await metaCommand.ExecuteReaderAsync();
@@ -726,19 +763,26 @@ namespace Betfair.Services
                     }
                 }
 
-                // First, delete existing odds for this market to avoid stale data
-                var deleteQuery = $"DELETE FROM {tableName} WHERE MarketId = $MarketId AND PriceType IN ('AvailableToBack', 'AvailableToLay')";
-                using (var deleteCommand = new SqliteCommand(deleteQuery, connection))
-                {
-                    deleteCommand.Parameters.AddWithValue("$MarketId", marketId);
-                    await deleteCommand.ExecuteNonQueryAsync();
-                }
+                // REMOVED: No longer deleting odds - Stream API continuously sends updates
+                // We simply INSERT new data or UPDATE existing data using ON CONFLICT
+                // This prevents data loss from incomplete Stream API messages
 
-                // Insert fresh odds from Stream API
+                // Insert fresh odds from Stream API (will update existing records via ON CONFLICT)
                 var insertQuery = $@"
                     INSERT INTO {tableName} 
-                    (MarketId, MarketName, SelectionId, Status, PriceType, Price, Size, {runnerNameCol}, Venue, EventDate, EventName, {boxCol}, {runnerIdCol})
-                    VALUES (@MarketId, @MarketName, @SelectionId, @Status, @PriceType, @Price, @Size, @RunnerName, @Venue, @EventDate, @EventName, @box, @RunnerId)";
+                    (marketid, marketname, selectionid, status, pricetype, price, size, {runnerNameCol}, venue, eventdate, eventname, {boxCol}, {runnerIdCol})
+                    VALUES (@MarketId, @MarketName, @SelectionId, @Status, @PriceType, @Price, @Size, @RunnerName, @Venue, @EventDate, @EventName, @box, @RunnerId)
+                    ON CONFLICT (marketid, selectionid, pricetype, price) 
+                    DO UPDATE SET 
+                        size = EXCLUDED.size,
+                        status = EXCLUDED.status,
+                        marketname = EXCLUDED.marketname,
+                        {runnerNameCol} = EXCLUDED.{runnerNameCol},
+                        venue = EXCLUDED.venue,
+                        eventdate = EXCLUDED.eventdate,
+                        eventname = EXCLUDED.eventname,
+                        {boxCol} = EXCLUDED.{boxCol},
+                        {runnerIdCol} = EXCLUDED.{runnerIdCol}";
 
                 int totalPricesStored = 0;
                 
@@ -748,12 +792,12 @@ namespace Betfair.Services
                         continue;
 
                     // Get runner metadata from database or fall back to market definition
-                    string runnerName;
-                    string venue;
-                    string eventDate;
-                    string eventName;
-                    double? boxNumber;
-                    string runnerId;
+                    string runnerName = null;
+                    string venue = null;
+                    string eventDate = null;
+                    string eventName = null;
+                    double? boxNumber = null;
+                    string runnerId = null;
                     
                     if (runnerMetadata.TryGetValue(runnerChange.Id, out var metadata))
                     {
@@ -766,33 +810,69 @@ namespace Betfair.Services
                     }
                     else
                     {
-                        // Fallback to market definition
-                        var runnerDef = marketChange.MarketDefinition?.Runners?.FirstOrDefault(r => r.Id == runnerChange.Id);
-                        runnerName = $"Runner {runnerChange.Id}";
+                        // First try to get runner name from marketcatalogue_runners table
+                        try
+                        {
+                            using var lookupCmd = new NpgsqlCommand(@"
+                                SELECT runnername, sortpriority 
+                                FROM marketcatalogue_runners 
+                                WHERE marketid = @MarketId AND selectionid = @SelectionId", connection);
+                            lookupCmd.Parameters.AddWithValue("@MarketId", marketId);
+                            lookupCmd.Parameters.AddWithValue("@SelectionId", runnerChange.Id);
+                            
+                            using var lookupReader = await lookupCmd.ExecuteReaderAsync();
+                            if (await lookupReader.ReadAsync())
+                            {
+                                runnerName = !lookupReader.IsDBNull(0) ? lookupReader.GetString(0) : null;
+                                if (!lookupReader.IsDBNull(1))
+                                {
+                                    boxNumber = lookupReader.GetInt32(1);
+                                }
+                            }
+                            await lookupReader.CloseAsync();
+                        }
+                        catch { }
+                        
+                        // Fallback to market definition if not found in runners table
+                        if (string.IsNullOrEmpty(runnerName))
+                        {
+                            var runnerDef = marketChange.MarketDefinition?.Runners?.FirstOrDefault(r => r.Id == runnerChange.Id);
+                            runnerName = runnerDef?.Name ?? $"Runner {runnerChange.Id}";
+                            if (boxNumber == null)
+                            {
+                                boxNumber = runnerDef?.SortPriority;
+                            }
+                        }
+                        
                         venue = marketChange.MarketDefinition?.Venue;
                         eventDate = marketChange.MarketDefinition?.MarketTime?.ToString("yyyy-MM-dd HH:mm:ss");
                         eventName = marketChange.MarketDefinition?.Event?.Name;
-                        boxNumber = runnerChange.Hc;
                         runnerId = runnerChange.Id.ToString();
                     }
                     
                     var status = "ACTIVE";
 
-                    // Store Back prices (Batb)
-                    if (runnerChange.Batb != null)
+                    // Store Back prices (Batb) - Format: [level, price, size]
+                    if (runnerChange.Batb != null && runnerChange.Batb.Count > 0)
                     {
                         foreach (var priceLevel in runnerChange.Batb)
                         {
-                            if (priceLevel.Count >= 2)
+                            if (priceLevel.Count >= 3)
                             {
-                                using var cmd = new SqliteCommand(insertQuery, connection);
+                                var price = Convert.ToDouble(priceLevel[1]);
+                                var size = Convert.ToDouble(priceLevel[2]);
+                                
+                                // Skip empty levels (size=0 per docs)
+                                if (size == 0) continue;
+                                
+                                using var cmd = new NpgsqlCommand(insertQuery, connection);
                                 cmd.Parameters.AddWithValue("@MarketId", marketId);
                                 cmd.Parameters.AddWithValue("@MarketName", marketChange.MarketDefinition?.MarketType ?? "WIN");
                                 cmd.Parameters.AddWithValue("@SelectionId", runnerChange.Id);
                                 cmd.Parameters.AddWithValue("@Status", status);
                                 cmd.Parameters.AddWithValue("@PriceType", "AvailableToBack");
-                                cmd.Parameters.AddWithValue("@Price", priceLevel[0]); // Price
-                                cmd.Parameters.AddWithValue("@Size", priceLevel[1]); // Size
+                                cmd.Parameters.AddWithValue("@Price", price);
+                                cmd.Parameters.AddWithValue("@Size", size);
                                 cmd.Parameters.AddWithValue("@RunnerName", runnerName ?? (object)DBNull.Value);
                                 cmd.Parameters.AddWithValue("@Venue", venue ?? (object)DBNull.Value);
                                 cmd.Parameters.AddWithValue("@EventDate", eventDate ?? (object)DBNull.Value);
@@ -805,21 +885,27 @@ namespace Betfair.Services
                         }
                     }
 
-                    // Store Lay prices (Bdatl - Best Displayed Available To Lay)
-                    if (runnerChange.Bdatl != null)
+                    // Store Lay prices (Bdatl) - Format: [level, price, size]
+                    if (runnerChange.Bdatl != null && runnerChange.Bdatl.Count > 0)
                     {
                         foreach (var priceLevel in runnerChange.Bdatl)
                         {
-                            if (priceLevel.Count >= 2)
+                            if (priceLevel.Count >= 3)
                             {
-                                using var cmd = new SqliteCommand(insertQuery, connection);
+                                var price = Convert.ToDouble(priceLevel[1]);
+                                var size = Convert.ToDouble(priceLevel[2]);
+                                
+                                // Skip empty levels (size=0 per docs)
+                                if (size == 0) continue;
+                                
+                                using var cmd = new NpgsqlCommand(insertQuery, connection);
                                 cmd.Parameters.AddWithValue("@MarketId", marketId);
                                 cmd.Parameters.AddWithValue("@MarketName", marketChange.MarketDefinition?.MarketType ?? "WIN");
                                 cmd.Parameters.AddWithValue("@SelectionId", runnerChange.Id);
                                 cmd.Parameters.AddWithValue("@Status", status);
                                 cmd.Parameters.AddWithValue("@PriceType", "AvailableToLay");
-                                cmd.Parameters.AddWithValue("@Price", priceLevel[0]); // Price
-                                cmd.Parameters.AddWithValue("@Size", priceLevel[1]); // Size
+                                cmd.Parameters.AddWithValue("@Price", price);
+                                cmd.Parameters.AddWithValue("@Size", size);
                                 cmd.Parameters.AddWithValue("@RunnerName", runnerName ?? (object)DBNull.Value);
                                 cmd.Parameters.AddWithValue("@Venue", venue ?? (object)DBNull.Value);
                                 cmd.Parameters.AddWithValue("@EventDate", eventDate ?? (object)DBNull.Value);
@@ -832,8 +918,6 @@ namespace Betfair.Services
                         }
                     }
                 }
-
-                _logger.LogInformation("✅ Real-time odds stored for market {marketId} in {tableName} ({totalPricesStored} price points)", marketId, tableName, totalPricesStored);
             }
             catch (Exception ex)
             {
@@ -849,44 +933,36 @@ namespace Betfair.Services
         {
             try
             {
-                using var connection = new SqliteConnection(_connectionString);
+                using var connection = new NpgsqlConnection(_connectionString);
                 await connection.OpenAsync();
-                
-                // Set busy timeout to 30 seconds to handle concurrent writes
-                using (var timeoutCommand = connection.CreateCommand())
-                {
-                    timeoutCommand.CommandText = "PRAGMA busy_timeout = 30000;";
-                    await timeoutCommand.ExecuteNonQueryAsync();
-                }
 
                 var createTableQuery = @"
-                CREATE TABLE IF NOT EXISTS StreamBspProjections (
-                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    MarketId TEXT NOT NULL,
-                    SelectionId INTEGER NOT NULL,
-                    RunnerName TEXT,
-                    NearPrice REAL,
-                    FarPrice REAL,
-                    Average REAL,
-                    UpdatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(MarketId, SelectionId)
+                CREATE TABLE IF NOT EXISTS streambspprojections (
+                    id BIGSERIAL PRIMARY KEY,
+                    marketid TEXT NOT NULL,
+                    selectionid BIGINT NOT NULL,
+                    runnername TEXT,
+                    nearprice DOUBLE PRECISION,
+                    farprice DOUBLE PRECISION,
+                    average DOUBLE PRECISION,
+                    updatedat TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(marketid, selectionid)
                 )";
 
-                using var command = new SqliteCommand(createTableQuery, connection);
+                using var command = new NpgsqlCommand(createTableQuery, connection);
                 await command.ExecuteNonQueryAsync();
 
                 // Create indexes
                 var createIndexQuery1 =
                     "CREATE INDEX IF NOT EXISTS idx_streambsp_marketid ON StreamBspProjections(MarketId)";
-                using var indexCommand1 = new SqliteCommand(createIndexQuery1, connection);
+                using var indexCommand1 = new NpgsqlCommand(createIndexQuery1, connection);
                 await indexCommand1.ExecuteNonQueryAsync();
 
                 var createIndexQuery2 =
                     "CREATE INDEX IF NOT EXISTS idx_streambsp_selectionid ON StreamBspProjections(SelectionId)";
-                using var indexCommand2 = new SqliteCommand(createIndexQuery2, connection);
+                using var indexCommand2 = new NpgsqlCommand(createIndexQuery2, connection);
                 await indexCommand2.ExecuteNonQueryAsync();
 
-                _logger.LogInformation("StreamBspProjections table created/verified successfully");
             }
             catch (Exception ex)
             {

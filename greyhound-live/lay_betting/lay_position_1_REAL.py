@@ -9,7 +9,6 @@ T+10s: Bet 3 - LIMIT_ON_CLOSE (accepts BSP up to maxOdds) - ONLY if Bet 1 & 2 un
 """
 
 import pandas as pd
-import sqlite3
 import requests
 import time
 import pytz
@@ -63,7 +62,6 @@ FLAT_STAKE = RISK_LIMITS['stakePerBet']
 
 # Database paths
 LIVE_TRADES_DB = "/Users/clairegrady/RiderProjects/betfair/databases/greyhounds/live_trades_greyhounds.db"
-BETFAIR_DB = "/Users/clairegrady/RiderProjects/betfair/Betfair/Betfair-Backend/betfairmarket.sqlite"
 RACE_TIMES_DB = "/Users/clairegrady/RiderProjects/betfair/databases/shared/race_info.db"
 BACKEND_URL = "http://localhost:5173"  # Backend runs on port 5173
 
@@ -88,6 +86,7 @@ class RealGreyhoundLayBetting:
         self.session.timeout = 10
         self.logged_initial_races = False
         self.next_race_info = None
+        self.no_runners_logged = set()  # Track markets we've already logged "no runners" for
     
     def check_daily_limits(self) -> tuple[bool, str]:
         """Check if we've hit daily risk limits. Returns (can_bet, reason)"""
@@ -103,7 +102,7 @@ class RealGreyhoundLayBetting:
                     COUNT(*) as bets_today,
                     COALESCE(SUM(profit_loss), 0) as net_pnl_today
                 FROM live_trades
-                WHERE date = ? AND status != 'FAILED'
+                WHERE date = %s AND status != 'FAILED'
             """, (today,))
             
             bets_today, net_pnl_today = cursor.fetchone()
@@ -528,7 +527,7 @@ class RealGreyhoundLayBetting:
                     dog_name, box_number, position_in_market, selection_id,
                     initial_odds_requested, final_odds_matched, stake, liability,
                     betfair_bet_id, status, total_matched, placement_time, matched_time
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 race_info['race_datetime'].strftime('%Y-%m-%d'),
                 race_info['venue'],
@@ -555,7 +554,7 @@ class RealGreyhoundLayBetting:
             
             logger.info(f"💾 Saved bet to DB: {race_info['venue']} R{race_info['race_number']} - {dog_info['dog_name']} @ {dog_info['odds']:.2f}")
             
-        except sqlite3.Error as db_error:
+        except Exception as db_error:
             logger.error(f"❌ DATABASE ERROR saving live trade: {db_error}")
             logger.error(f"   Race: {race_info.get('venue')} R{race_info.get('race_number')}")
             logger.error(f"   Market ID: {race_info.get('market_id')}")
@@ -573,7 +572,7 @@ class RealGreyhoundLayBetting:
             
             cursor.execute("""
                 SELECT COUNT(*) FROM live_trades 
-                WHERE market_id = ? AND status != 'FAILED'
+                WHERE market_id = %s AND status != 'FAILED'
             """, (market_id,))
             
             count = cursor.fetchone()[0]
@@ -588,14 +587,14 @@ class RealGreyhoundLayBetting:
     def get_upcoming_races(self) -> List[Dict]:
         """Get greyhound races within betting window (5-50 seconds before race time)"""
         try:
-            conn = sqlite3.connect("/Users/clairegrady/RiderProjects/betfair/databases/shared/race_info.db", timeout=30)
+            conn = get_db_connection("/Users/clairegrady/RiderProjects/betfair/databases/shared/race_info.db")
             # Don't filter by date - calculate time differences for all races
             # This handles cross-midnight races (e.g. Perth races after midnight)
             query = """
                 SELECT venue, race_number, race_time, race_date, country
                 FROM greyhound_race_times
-                WHERE race_date >= date('now', 'localtime')
-                AND race_date <= date('now', 'localtime', '+1 day')
+                WHERE race_date::date >= CURRENT_DATE
+                AND race_date::date <= CURRENT_DATE + INTERVAL '1 day'
                 ORDER BY race_date, race_time
             """
             df = pd.read_sql(query, conn)
@@ -661,18 +660,18 @@ class RealGreyhoundLayBetting:
     def find_market_id(self, venue: str, race_number: int) -> Optional[str]:
         """Find market ID in Betfair database"""
         try:
-            conn = sqlite3.connect("/Users/clairegrady/RiderProjects/betfair/Betfair/Betfair-Backend/betfairmarket.sqlite", timeout=30)
+            conn = get_db_connection('betfairmarket')
             cursor = conn.cursor()
             
             aest_tz = pytz.timezone('Australia/Sydney')
             today_str = datetime.now(aest_tz).strftime("%-d")
             
             query = """
-                SELECT MarketId
-                FROM MarketCatalogue
-                WHERE EventName LIKE ?
-                AND MarketName LIKE ?
-                AND EventTypeName = 'Greyhound Racing'
+                SELECT marketid
+                FROM marketcatalogue
+                WHERE eventname ILIKE %s
+                AND marketname ILIKE %s
+                AND eventtypename = 'Greyhound Racing'
                 LIMIT 1
             """
             
@@ -711,7 +710,10 @@ class RealGreyhoundLayBetting:
             runners = data.get('runners', [])
             
             if not runners:
-                logger.error(f"No runners in API response for {market_id}")
+                # Only log once per market to avoid spam
+                if market_id not in self.no_runners_logged:
+                    logger.debug(f"No runners yet for {market_id}")
+                    self.no_runners_logged.add(market_id)
                 return None
             
             logger.info(f"📡 API returned {len(runners)} runners for {market_id}")
@@ -770,10 +772,10 @@ class RealGreyhoundLayBetting:
             logger.info(f"🔍 Favorite found: {favorite['dog_name']} @ {favorite['odds']} (MAX_ODDS={MAX_ODDS})")
             
             # Get total_matched
-            conn = sqlite3.connect("/Users/clairegrady/RiderProjects/betfair/Betfair/Betfair-Backend/betfairmarket.sqlite", timeout=30)
+            conn = get_db_connection('betfairmarket')
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT TotalMatched FROM MarketCatalogue WHERE MarketId = ?
+                SELECT totalmatched FROM marketcatalogue WHERE marketid = %s
             """, (market_id,))
             
             total_matched_row = cursor.fetchone()

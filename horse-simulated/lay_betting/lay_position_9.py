@@ -23,8 +23,6 @@ MAX_ODDS = 500
 SECONDS_BEFORE_RACE = 5
 FLAT_STAKE = 10
 
-DB_PATH = "/Users/clairegrady/RiderProjects/betfair/databases/horses/paper_trades_horses.db"
-BETFAIR_DB = "/Users/clairegrady/RiderProjects/betfair/Betfair/Betfair-Backend/betfairmarket.sqlite"
 RACE_TIMES_DB = "/Users/clairegrady/RiderProjects/betfair/databases/shared/race_info.db"
 BACKEND_URL = "http://localhost:5173"
 
@@ -118,7 +116,7 @@ class HorseLayBetting:
     def find_market_id(self, venue: str, race_number: int) -> Optional[str]:
         """Find Win market ID for this race"""
         try:
-            conn = sqlite3.connect("/Users/clairegrady/RiderProjects/betfair/Betfair/Betfair-Backend/betfairmarket.sqlite", timeout=30)
+            conn = get_db_connection("betfairmarket")
             cursor = conn.cursor()
             
             today_str = datetime.now(pytz.timezone('Australia/Sydney')).strftime("%-d")
@@ -149,7 +147,7 @@ class HorseLayBetting:
     def get_odds_from_db(self, market_id: str) -> Optional[Dict]:
         """Fallback: Get lay odds from MarketBookLayprices (Stream API data)"""
         try:
-            conn = sqlite3.connect("/Users/clairegrady/RiderProjects/betfair/Betfair/Betfair-Backend/betfairmarket.sqlite", timeout=30)
+            conn = get_db_connection("betfairmarket")
             cursor = conn.cursor()
             
             # Get lay prices from Stream API data
@@ -224,7 +222,7 @@ class HorseLayBetting:
                 return self.get_odds_from_db(market_id)
             
             # Get runner names and barriers from HorseMarketBook table
-            conn = sqlite3.connect("/Users/clairegrady/RiderProjects/betfair/Betfair/Betfair-Backend/betfairmarket.sqlite", timeout=30)
+            conn = get_db_connection("betfairmarket")
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT DISTINCT selectionid, RUNNER_NAME, STALL_DRAW
@@ -272,7 +270,7 @@ class HorseLayBetting:
             # Get total matched from MarketCatalogue
             total_matched = None
             try:
-                betfair_conn = sqlite3.connect("/Users/clairegrady/RiderProjects/betfair/Betfair/Betfair-Backend/betfairmarket.sqlite", timeout=30)
+                betfair_conn = get_db_connection("betfairmarket")
                 betfair_cursor = betfair_conn.cursor()
                 betfair_cursor.execute("""
                     SELECT TotalMatched FROM MarketCatalogue WHERE MarketId = ?
@@ -284,7 +282,7 @@ class HorseLayBetting:
             except Exception as e:
                 logger.debug(f"Could not fetch TotalMatched: {e}")
             
-            conn = get_db_connection(DB_PATH)
+            conn = get_db_connection('betfair_trades')
             cursor = conn.cursor()
             
             liability = FLAT_STAKE * (horse['odds'] - 1)

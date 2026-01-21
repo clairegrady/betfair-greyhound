@@ -405,6 +405,9 @@ namespace Betfair.Models
 
         [JsonPropertyName("removalDate")]
         public DateTime? RemovalDate { get; set; }
+        
+        [JsonPropertyName("name")]
+        public string Name { get; set; }
 
         [JsonPropertyName("id")]
         public long Id { get; set; }

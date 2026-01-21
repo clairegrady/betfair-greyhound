@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+using Npgsql;
 using Betfair.Models.Market;
 
 namespace Betfair.Data;
@@ -11,7 +11,7 @@ public class MarketProfitAndLossDb
     }
     public async Task InsertMarketProfitAndLossIntoDatabase(List<MarketProfitAndLoss> marketProfitAndLossList)
     {
-        using var connection = new SqliteConnection(_connectionString);
+        using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync();
 
         foreach (var marketProfitAndLoss in marketProfitAndLossList)
@@ -26,34 +26,39 @@ public class MarketProfitAndLossDb
             }
         }
     }
-    private async Task InsertMarketProfitAndLoss(SqliteConnection connection, MarketProfitAndLoss marketProfitAndLoss)
+    private async Task InsertMarketProfitAndLoss(NpgsqlConnection connection, MarketProfitAndLoss marketProfitAndLoss)
     {
         using var command = connection.CreateCommand();
         command.CommandText = @"
-            INSERT OR REPLACE INTO MarketProfitAndLoss 
-            (MarketId, NetProfit, GrossProfit, CommissionApplied)
+            INSERT INTO marketprofitandloss 
+            (marketid, netprofit, grossprofit, commissionapplied)
             VALUES 
-            ($MarketId, $NetProfit, $GrossProfit, $CommissionApplied)";
+            (@marketid, @netprofit, @grossprofit, @commissionapplied)
+            ON CONFLICT (marketid) DO UPDATE SET
+                netprofit = EXCLUDED.netprofit,
+                grossprofit = EXCLUDED.grossprofit,
+                commissionapplied = EXCLUDED.commissionapplied";
         
-        command.Parameters.AddWithValue("$MarketId", marketProfitAndLoss.MarketId);
-        command.Parameters.AddWithValue("$NetProfit", marketProfitAndLoss.NetProfit ?? 0); // Use 0 if NetProfit is null
-        command.Parameters.AddWithValue("$GrossProfit", marketProfitAndLoss.GrossProfit ?? 0); // Use 0 if GrossProfit is null
-        command.Parameters.AddWithValue("$CommissionApplied", marketProfitAndLoss.CommissionApplied ?? 0); // Use 0 if CommissionApplied is null
+        command.Parameters.AddWithValue("@marketid", marketProfitAndLoss.MarketId);
+        command.Parameters.AddWithValue("@netprofit", marketProfitAndLoss.NetProfit ?? 0);
+        command.Parameters.AddWithValue("@grossprofit", marketProfitAndLoss.GrossProfit ?? 0);
+        command.Parameters.AddWithValue("@commissionapplied", marketProfitAndLoss.CommissionApplied ?? 0);
         await command.ExecuteNonQueryAsync();
     }
-    private async Task InsertBetProfitAndLoss(SqliteConnection connection, string marketId, BetProfitAndLoss bet)
+    private async Task InsertBetProfitAndLoss(NpgsqlConnection connection, string marketId, BetProfitAndLoss bet)
     {
         using var command = connection.CreateCommand();
         command.CommandText = @"
-            INSERT OR REPLACE INTO BetProfitAndLoss 
-            (SelectionId, MarketId, IfWin)
+            INSERT INTO betprofitandloss 
+            (selectionid, marketid, ifwin)
             VALUES 
-            ($SelectionId, $MarketId, $IfWin)";
+            (@selectionid, @marketid, @ifwin)
+            ON CONFLICT (selectionid, marketid) DO UPDATE SET
+                ifwin = EXCLUDED.ifwin";
         
-        command.Parameters.AddWithValue("$SelectionId", bet.SelectionId);
-        command.Parameters.AddWithValue("$MarketId", marketId);
-        command.Parameters.AddWithValue("$IfWin", bet.IfWin);
+        command.Parameters.AddWithValue("@selectionid", bet.SelectionId);
+        command.Parameters.AddWithValue("@marketid", marketId);
+        command.Parameters.AddWithValue("@ifwin", bet.IfWin);
         await command.ExecuteNonQueryAsync();
     }
 }
-

@@ -145,7 +145,7 @@ namespace Betfair.AutomatedServices
                 eventTypeIds: new List<string> { "7" }, // Horse Racing
                 marketTypes: new List<string> { "WIN" },
                 countryCodes: new List<string> { "AU", "NZ" },
-                timeWindow: TimeSpan.FromMinutes(10)
+                timeWindow: TimeSpan.FromMinutes(30)
             );
             _logger.LogWarning("📊 Horse Racing WIN markets subscribed");
             
@@ -154,7 +154,7 @@ namespace Betfair.AutomatedServices
                 eventTypeIds: new List<string> { "7" }, // Horse Racing
                 marketTypes: new List<string> { "PLACE" },
                 countryCodes: new List<string> { "AU", "NZ" },
-                timeWindow: TimeSpan.FromMinutes(10)
+                timeWindow: TimeSpan.FromMinutes(30)
             );
             _logger.LogWarning("📊 Horse Racing PLACE markets subscribed");
             
@@ -163,7 +163,7 @@ namespace Betfair.AutomatedServices
                 eventTypeIds: new List<string> { "4339" }, // Greyhound Racing
                 marketTypes: new List<string> { "WIN" },
                 countryCodes: new List<string> { "AU", "NZ" },
-                timeWindow: TimeSpan.FromMinutes(10)
+                timeWindow: TimeSpan.FromMinutes(30)
             );
             _logger.LogWarning("📊 Greyhound Racing WIN markets subscribed");
             
@@ -202,7 +202,7 @@ namespace Betfair.AutomatedServices
                             eventTypeIds: new List<string> { "7" },
                             marketTypes: new List<string> { "WIN" },
                             countryCodes: new List<string> { "AU", "NZ" },
-                            timeWindow: TimeSpan.FromMinutes(10)
+                            timeWindow: TimeSpan.FromMinutes(30)
                         );
                         
                         // Horse Racing - PLACE
@@ -210,7 +210,7 @@ namespace Betfair.AutomatedServices
                             eventTypeIds: new List<string> { "7" },
                             marketTypes: new List<string> { "PLACE" },
                             countryCodes: new List<string> { "AU", "NZ" },
-                            timeWindow: TimeSpan.FromMinutes(10)
+                            timeWindow: TimeSpan.FromMinutes(30)
                         );
                         
                         // Greyhound Racing - WIN
@@ -218,7 +218,7 @@ namespace Betfair.AutomatedServices
                             eventTypeIds: new List<string> { "4339" },
                             marketTypes: new List<string> { "WIN" },
                             countryCodes: new List<string> { "AU", "NZ" },
-                            timeWindow: TimeSpan.FromMinutes(10)
+                            timeWindow: TimeSpan.FromMinutes(30)
                         );
                         
                         lastSubscriptionRefresh = DateTime.UtcNow;

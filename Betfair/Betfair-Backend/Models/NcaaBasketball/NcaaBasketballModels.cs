@@ -107,8 +107,8 @@ public class PaperTradeStats
     public double TotalStaked { get; set; }
     public double TotalProfit { get; set; }
     public double ROI { get; set; }
-    public double AvgStake { get; set; }
-    public double AvgOdds { get; set; }
-    public double AvgEdge { get; set; }
+    public double? AvgStake { get; set; }
+    public double? AvgOdds { get; set; }
+    public double? AvgEdge { get; set; }
 }
 

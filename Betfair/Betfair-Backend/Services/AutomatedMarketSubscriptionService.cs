@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Data.Sqlite;
+using Npgsql;
 using Betfair.AutomatedServices;
 
 namespace Betfair.Services
@@ -16,6 +16,7 @@ namespace Betfair.Services
         private readonly ILogger<AutomatedMarketSubscriptionService> _logger;
         private readonly IServiceProvider _serviceProvider;
         private readonly string _connectionString;
+        private readonly string _betfairConnectionString;
         private readonly HashSet<string> _subscribedMarkets = new();
         private Timer _subscriptionTimer;
 
@@ -26,8 +27,11 @@ namespace Betfair.Services
         {
             _logger = logger;
             _serviceProvider = serviceProvider;
-            // Use the live_betting.sqlite database path
-            _connectionString = "Data Source=/Users/clairegrady/RiderProjects/betfair/data-model/live_betting.sqlite";
+            // Use the RacesDb for race times and DefaultDb for market data
+            _connectionString = configuration.GetConnectionString("RacesDb") 
+                ?? throw new InvalidOperationException("RacesDb connection string not found");
+            _betfairConnectionString = configuration.GetConnectionString("DefaultDb") 
+                ?? throw new InvalidOperationException("DefaultDb connection string not found");
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -70,77 +74,90 @@ namespace Betfair.Services
 
         private async Task<List<RaceInfo>> GetUpcomingRaces()
         {
-            _logger.LogWarning("Automated Market Subscription Service started");
             var races = new List<RaceInfo>();
             var now = DateTime.UtcNow;
             var subscriptionWindow = TimeSpan.FromMinutes(15); // Subscribe 15 minutes before race
 
-            using var connection = new SqliteConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync();
 
-            // Get races from race_times that are starting soon
+            // Get races from BOTH horse_race_times AND greyhound_race_times that are starting soon
             var raceTimesQuery = @"
-                SELECT venue, race_number, race_time, race_date
-                FROM race_times 
-                WHERE datetime(race_time) BETWEEN datetime('now') AND datetime('now', '+1 hour')
+                SELECT venue, race_number, race_time, race_date, 'horse' as race_type
+                FROM horse_race_times 
+                WHERE race_date::date >= CURRENT_DATE
+                AND race_time BETWEEN NOW() AND NOW() + INTERVAL '1 hour'
+                UNION ALL
+                SELECT venue, race_number, race_time, race_date, 'greyhound' as race_type
+                FROM greyhound_race_times 
+                WHERE race_date::date >= CURRENT_DATE
+                AND race_time BETWEEN NOW() AND NOW() + INTERVAL '1 hour'
                 ORDER BY race_time";
 
-            using var raceTimesCommand = new SqliteCommand(raceTimesQuery, connection);
+            using var raceTimesCommand = new NpgsqlCommand(raceTimesQuery, connection);
             using var raceTimesReader = await raceTimesCommand.ExecuteReaderAsync();
 
             while (await raceTimesReader.ReadAsync())
             {
-                var venue = raceTimesReader.GetString(1); // venue column
-                var raceNumber = raceTimesReader.GetInt32(2); // race_number column
-                var raceTimeStr = raceTimesReader.GetString(3); // race_time column
-                var raceDate = raceTimesReader.GetString(4); // race_date column
-
-                if (DateTime.TryParse(raceTimeStr, out var raceTime))
+                var venue = raceTimesReader.GetString(0); // venue column
+                var raceNumber = raceTimesReader.GetInt32(1); // race_number column
+                var raceTimeStr = raceTimesReader.GetString(2); // race_time column (TEXT type)
+                var raceDate = raceTimesReader.GetString(3); // race_date column
+                var raceType = raceTimesReader.GetString(4); // race_type column
+                
+                // Parse the race time string (format: HH:MM)
+                if (!DateTime.TryParse($"{raceDate} {raceTimeStr}", out DateTime raceTime))
                 {
-                    var timeUntilRace = raceTime - now;
-                    
-                    // Subscribe if race is starting within the next hour and at least 5 minutes away
-                    if (timeUntilRace <= TimeSpan.FromHours(1) && timeUntilRace >= TimeSpan.FromMinutes(5))
+                    continue;
+                }
+
+                var timeUntilRace = raceTime - now;
+                
+                // Subscribe if race is starting within the next hour and at least 5 minutes away
+                if (timeUntilRace <= TimeSpan.FromHours(1) && timeUntilRace >= TimeSpan.FromMinutes(5))
+                {
+                    // Try to find matching Betfair market
+                    var marketId = await FindMarketId(venue, raceNumber, raceDate, raceType);
+                    if (!string.IsNullOrEmpty(marketId))
                     {
-                        // Try to find matching Betfair market
-                        var marketId = await FindMarketId(venue, raceNumber, raceDate);
-                        if (!string.IsNullOrEmpty(marketId))
+                        races.Add(new RaceInfo
                         {
-                            races.Add(new RaceInfo
-                            {
-                                MarketId = marketId,
-                                Venue = venue,
-                                RaceNumber = raceNumber,
-                                RaceTime = raceTime,
-                                RaceDate = raceDate
-                            });
-                        }
+                            MarketId = marketId,
+                            Venue = venue,
+                            RaceNumber = raceNumber,
+                            RaceTime = raceTime,
+                            RaceDate = raceDate,
+                            RaceType = raceType
+                        });
                     }
                 }
             }
 
+            _logger.LogInformation($"Found {races.Count} upcoming races to subscribe to ({races.Count(r => r.RaceType == "horse")} horses, {races.Count(r => r.RaceType == "greyhound")} greyhounds)");
             return races;
         }
 
-        private async Task<string> FindMarketId(string venue, int raceNumber, string raceDate)
+        private async Task<string> FindMarketId(string venue, int raceNumber, string raceDate, string raceType)
         {
-            // Use the betfairmarket.sqlite database for HorseMarketBook
-            var betfairConnectionString = "Data Source=/Users/clairegrady/RiderProjects/betfair/Betfair/Betfair-Backend/betfairmarket.sqlite";
-            using var connection = new SqliteConnection(betfairConnectionString);
+            // Use the betfairmarket database
+            using var connection = new NpgsqlConnection(_betfairConnectionString);
             await connection.OpenAsync();
 
+            // Choose the correct table based on race type
+            var tableName = raceType == "horse" ? "horsemarketbook" : "greyhoundmarketbook";
+            
             // Try to match by venue and race number (date is embedded in EventName)
-            var query = @"
-                SELECT DISTINCT marketId 
-                FROM HorseMarketBook 
-                WHERE (EventName LIKE $venuePattern OR MarketName LIKE $venuePattern)
-                AND (MarketName LIKE $racePattern OR MarketName LIKE $racePattern2)
+            var query = $@"
+                SELECT DISTINCT marketid 
+                FROM {tableName}
+                WHERE (eventname ILIKE @venuePattern OR marketname ILIKE @venuePattern)
+                AND (marketname ILIKE @racePattern OR marketname ILIKE @racePattern2)
                 LIMIT 1";
 
-            using var command = new SqliteCommand(query, connection);
-            command.Parameters.AddWithValue("$venuePattern", $"%{venue}%");
-            command.Parameters.AddWithValue("$racePattern", $"R{raceNumber}%");
-            command.Parameters.AddWithValue("$racePattern2", $"Race {raceNumber}%");
+            using var command = new NpgsqlCommand(query, connection);
+            command.Parameters.AddWithValue("@venuePattern", $"%{venue}%");
+            command.Parameters.AddWithValue("@racePattern", $"R{raceNumber}%");
+            command.Parameters.AddWithValue("@racePattern2", $"Race {raceNumber}%");
 
             var result = await command.ExecuteScalarAsync();
             return result?.ToString();
@@ -173,27 +190,37 @@ namespace Betfair.Services
             foreach (var marketId in _subscribedMarkets)
             {
                 // Check if race has finished (assuming races last max 10 minutes)
-                // Use the live_betting.sqlite database for race_times
-                using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
+                using var racesConn = new NpgsqlConnection(_connectionString);
+                await racesConn.OpenAsync();
 
+                // Check both horse and greyhound race times
                 var query = @"
-                    SELECT race_time 
-                    FROM race_times rt
-                    JOIN HorseMarketBook hmb ON (hmb.EventName LIKE '%' || rt.venue || '%' OR hmb.MarketName LIKE '%' || rt.venue || '%')
-                    WHERE hmb.marketId = $marketId
-                    AND datetime(rt.race_time) < datetime('now', '-10 minutes')";
+                    SELECT race_time::timestamp 
+                    FROM horse_race_times
+                    WHERE (race_date || ' ' || race_time)::timestamp < NOW() - INTERVAL '10 minutes'
+                    AND venue IN (
+                        SELECT DISTINCT substring(eventname from 1 for position('(' in eventname) - 1)
+                        FROM horsemarketbook 
+                        WHERE marketid = @marketId
+                    )
+                    UNION ALL
+                    SELECT race_time::timestamp
+                    FROM greyhound_race_times
+                    WHERE (race_date || ' ' || race_time)::timestamp < NOW() - INTERVAL '10 minutes'
+                    AND venue IN (
+                        SELECT DISTINCT substring(eventname from 1 for position('(' in eventname) - 1)
+                        FROM greyhoundmarketbook
+                        WHERE marketid = @marketId
+                    )
+                    LIMIT 1";
 
-                using var command = new SqliteCommand(query, connection);
-                command.Parameters.AddWithValue("$marketId", marketId);
+                using var command = new NpgsqlCommand(query, racesConn);
+                command.Parameters.AddWithValue("@marketId", marketId);
 
-                var raceTime = await command.ExecuteScalarAsync();
-                if (raceTime != null && DateTime.TryParse(raceTime.ToString(), out var raceDateTime))
+                var result = await command.ExecuteScalarAsync();
+                if (result != null)
                 {
-                    if (now > raceDateTime.AddMinutes(10)) // Race finished 10+ minutes ago
-                    {
-                        marketsToRemove.Add(marketId);
-                    }
+                    marketsToRemove.Add(marketId);
                 }
             }
 
@@ -230,5 +257,6 @@ namespace Betfair.Services
         public int RaceNumber { get; set; }
         public DateTime RaceTime { get; set; }
         public string RaceDate { get; set; }
+        public string RaceType { get; set; } // "horse" or "greyhound"
     }
 }

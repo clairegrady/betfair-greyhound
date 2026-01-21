@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Betfair.Data;
 using System.Threading.Tasks;
-using Microsoft.Data.Sqlite;
+using Npgsql;
 using Dapper;
 
 namespace Betfair.Controllers;
@@ -24,20 +24,20 @@ public class GreyhoundMarketBookController : ControllerBase
     {
         try
         {
-            using var connection = new SqliteConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync();
 
             var query = @"
                 SELECT DISTINCT 
-                    MarketId, 
-                    MarketName, 
-                    SelectionId, 
-                    Status,
-                    PriceType,
-                    Price,
-                    Size
-                FROM GreyhoundMarketBook 
-                ORDER BY MarketId, SelectionId, PriceType, Price";
+                    marketid, 
+                    marketname, 
+                    selectionid, 
+                    status,
+                    pricetype,
+                    price,
+                    size
+                FROM greyhoundmarketbook 
+                ORDER BY marketid, selectionid, pricetype, price";
 
             var greyhoundMarketBooks = await connection.QueryAsync(query);
             return Ok(greyhoundMarketBooks);
@@ -53,14 +53,14 @@ public class GreyhoundMarketBookController : ControllerBase
     {
         try
         {
-            using var connection = new SqliteConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync();
 
-            // Get greyhound details from GreyhoundMarketBook
+            // Get greyhound details from greyhoundmarketbook
             var greyhoundQuery = @"
-                SELECT MarketId, MarketName, SelectionId, Status
-                FROM GreyhoundMarketBook 
-                WHERE SelectionId = @SelectionId 
+                SELECT marketid, marketname, selectionid, status
+                FROM greyhoundmarketbook 
+                WHERE selectionid = @SelectionId 
                 LIMIT 1";
 
             var greyhoundInfo = await connection.QueryFirstOrDefaultAsync(greyhoundQuery, new { SelectionId = selectionId });
@@ -72,21 +72,21 @@ public class GreyhoundMarketBookController : ControllerBase
 
             // Get back odds
             var backOddsQuery = @"
-                SELECT Price, Size, MarketId
-                FROM GreyhoundMarketBook 
-                WHERE SelectionId = @SelectionId 
-                AND PriceType = 'AvailableToBack'
-                ORDER BY Price DESC";
+                SELECT price, size, marketid
+                FROM greyhoundmarketbook 
+                WHERE selectionid = @SelectionId 
+                AND pricetype = 'AvailableToBack'
+                ORDER BY price DESC";
 
             var backOdds = await connection.QueryAsync(backOddsQuery, new { SelectionId = selectionId });
 
             // Get lay odds
             var layOddsQuery = @"
-                SELECT Price, Size, MarketId
-                FROM GreyhoundMarketBook 
-                WHERE SelectionId = @SelectionId 
-                AND PriceType = 'AvailableToLay'
-                ORDER BY Price ASC";
+                SELECT price, size, marketid
+                FROM greyhoundmarketbook 
+                WHERE selectionid = @SelectionId 
+                AND pricetype = 'AvailableToLay'
+                ORDER BY price ASC";
 
             var layOdds = await connection.QueryAsync(layOddsQuery, new { SelectionId = selectionId });
 
@@ -95,12 +95,12 @@ public class GreyhoundMarketBookController : ControllerBase
                 Greyhound = new
                 {
                     SelectionId = selectionId,
-                    MarketId = greyhoundInfo.MarketId,
-                    MarketName = greyhoundInfo.MarketName,
-                    Status = greyhoundInfo.Status
+                    MarketId = greyhoundInfo.marketid,
+                    MarketName = greyhoundInfo.marketname,
+                    Status = greyhoundInfo.status
                 },
-                BackOdds = backOdds.Select(b => new { Price = b.Price, Size = b.Size, MarketId = b.MarketId }),
-                LayOdds = layOdds.Select(l => new { Price = l.Price, Size = l.Size, MarketId = l.MarketId })
+                BackOdds = backOdds.Select(b => new { Price = b.price, Size = b.size, MarketId = b.marketid }),
+                LayOdds = layOdds.Select(l => new { Price = l.price, Size = l.size, MarketId = l.marketid })
             });
         }
         catch (Exception ex)
@@ -114,19 +114,19 @@ public class GreyhoundMarketBookController : ControllerBase
     {
         try
         {
-            using var connection = new SqliteConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync();
 
             var query = @"
                 SELECT 
-                    SelectionId,
-                    Status,
-                    PriceType,
-                    Price,
-                    Size
-                FROM GreyhoundMarketBook 
-                WHERE MarketId = @MarketId
-                ORDER BY SelectionId, PriceType, Price";
+                    selectionid,
+                    status,
+                    pricetype,
+                    price,
+                    size
+                FROM greyhoundmarketbook 
+                WHERE marketid = @MarketId
+                ORDER BY selectionid, pricetype, price";
 
             var marketOdds = await connection.QueryAsync(query, new { MarketId = marketId });
 

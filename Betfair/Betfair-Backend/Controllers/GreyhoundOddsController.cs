@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.Sqlite;
+using Npgsql;
 using Betfair.Services;
 using System.Text.Json;
 using Betfair.Models;
@@ -13,16 +13,12 @@ namespace Betfair.Controllers;
 public class GreyhoundOddsController : ControllerBase
 {
     private readonly string _connectionString;
-    private readonly string _bettingHistoryConnectionString;
     private readonly ILogger<GreyhoundOddsController> _logger;
-    private readonly IMarketApiService _marketApiService;
 
-    public GreyhoundOddsController(IConfiguration configuration, ILogger<GreyhoundOddsController> logger, IMarketApiService marketApiService)
+    public GreyhoundOddsController(IConfiguration configuration, ILogger<GreyhoundOddsController> logger)
     {
         _connectionString = configuration.GetConnectionString("DefaultDb");
-        _bettingHistoryConnectionString = configuration.GetConnectionString("BettingHistoryDb");
         _logger = logger;
-        _marketApiService = marketApiService;
     }
 
     [HttpGet("current/{marketId}/{selectionId}")]
@@ -30,7 +26,7 @@ public class GreyhoundOddsController : ControllerBase
     {
         try
         {
-            using var connection = new SqliteConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync();
 
             // Get current best lay price for greyhounds
@@ -43,7 +39,7 @@ public class GreyhoundOddsController : ControllerBase
                 AND Status = 'ACTIVE'
                 AND PriceType = 'AvailableToLay'";
 
-            using var command = new SqliteCommand(query, connection);
+            using var command = new NpgsqlCommand(query, connection);
             command.Parameters.AddWithValue("@marketId", marketId);
             command.Parameters.AddWithValue("@selectionId", selectionId);
 
@@ -78,7 +74,7 @@ public class GreyhoundOddsController : ControllerBase
     {
         try
         {
-            using var connection = new SqliteConnection(_connectionString);
+            using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync();
 
             // Get all active lay prices for the greyhound market
@@ -95,7 +91,7 @@ public class GreyhoundOddsController : ControllerBase
                 GROUP BY SelectionId
                 ORDER BY SelectionId";
 
-            using var command = new SqliteCommand(query, connection);
+            using var command = new NpgsqlCommand(query, connection);
             command.Parameters.AddWithValue("@marketId", marketId);
 
             using var reader = await command.ExecuteReaderAsync();
@@ -124,140 +120,6 @@ public class GreyhoundOddsController : ControllerBase
         {
             _logger.LogError(ex, "Error getting greyhound market odds for {MarketId}", marketId);
             return StatusCode(500, new { message = "Internal server error" });
-        }
-    }
-
-    [HttpGet("refresh/{marketId}")]
-    public async Task<IActionResult> RefreshGreyhoundOdds(string marketId)
-    {
-        try
-        {
-            _logger.LogInformation("Refreshing greyhound odds for market {MarketId}", marketId);
-            
-            // Refresh the greyhound market odds
-            await RefreshGreyhoundMarketOdds(marketId, "CurrentGreyhoundWinOdds");
-            
-            return Ok(new
-            {
-                marketId,
-                message = "Greyhound odds refreshed successfully",
-                refreshedAt = DateTime.UtcNow
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error refreshing greyhound odds for market {MarketId}", marketId);
-            return StatusCode(500, new { message = "Internal server error", details = ex.Message });
-        }
-    }
-    
-    private async Task<int> RefreshGreyhoundMarketOdds(string marketId, string tableName)
-    {
-        try
-        {
-            // Fetch fresh odds from Betfair API
-            var marketIds = new List<string> { marketId };
-            var response = await _marketApiService.ListMarketBookAsync(marketIds);
-            
-            // Parse the response
-            ApiResponse<MarketBook<ApiRunner>> marketBookResponse;
-            try
-            {
-                marketBookResponse = JsonSerializer.Deserialize<ApiResponse<MarketBook<ApiRunner>>>(response);
-            }
-            catch (JsonException ex)
-            {
-                _logger.LogError($"JSON deserialization error for greyhound market {marketId}: {ex.Message}");
-                return 0;
-            }
-            
-            if (marketBookResponse?.Result == null || !marketBookResponse.Result.Any())
-            {
-                return 0;
-            }
-            
-            // Update the betting_history database with fresh greyhound odds data
-            using var connection = new SqliteConnection(_bettingHistoryConnectionString);
-            await connection.OpenAsync();
-            
-            using var transaction = await connection.BeginTransactionAsync();
-            
-            // Clear existing odds for this market
-            var clearQuery = $"DELETE FROM {tableName} WHERE MarketId = @marketId";
-            using var clearCommand = new SqliteCommand(clearQuery, connection);
-            clearCommand.Transaction = (SqliteTransaction)transaction;
-            clearCommand.Parameters.AddWithValue("@marketId", marketId);
-            await clearCommand.ExecuteNonQueryAsync();
-            
-            int totalOddsRecords = 0;
-            
-            // Insert fresh greyhound odds data
-            foreach (var marketBook in marketBookResponse.Result)
-            {
-                foreach (var runner in marketBook.Runners)
-                {
-                    // Get best back odds
-                    double? bestBackPrice = null;
-                    double? bestBackSize = null;
-                    if (runner.Exchange?.AvailableToBack != null && runner.Exchange.AvailableToBack.Any())
-                    {
-                        var bestBack = runner.Exchange.AvailableToBack.OrderByDescending(b => b.Price).First();
-                        bestBackPrice = (double)bestBack.Price;
-                        bestBackSize = (double)bestBack.Size;
-                    }
-                    
-                    // Get best lay odds
-                    double? bestLayPrice = null;
-                    double? bestLaySize = null;
-                    if (runner.Exchange?.AvailableToLay != null && runner.Exchange.AvailableToLay.Any())
-                    {
-                        var bestLay = runner.Exchange.AvailableToLay.OrderBy(l => l.Price).First();
-                        bestLayPrice = (double)bestLay.Price;
-                        bestLaySize = (double)bestLay.Size;
-                    }
-                    
-                    // Only insert if we have at least back or lay odds
-                    if (bestBackPrice.HasValue || bestLayPrice.HasValue)
-                    {
-                        var insertQuery = $@"
-                            INSERT INTO {tableName}
-                            (MarketId, SelectionId, RunnerName, Price, Size, Status, LastPriceTraded, TotalMatched, UpdatedAt, best_back_price, best_lay_price, best_back_size, best_lay_size)
-                            VALUES
-                            ($MarketId, $SelectionId, $RunnerName, $Price, $Size, $Status, $LastPriceTraded, $TotalMatched, $UpdatedAt, $BestBackPrice, $BestLayPrice, $BestBackSize, $BestLaySize)";
-                        
-                        using var priceCommand = new SqliteCommand(insertQuery, connection);
-                        priceCommand.Transaction = (SqliteTransaction)transaction;
-
-                        priceCommand.Parameters.AddWithValue("$MarketId", marketId);
-                        priceCommand.Parameters.AddWithValue("$SelectionId", runner.SelectionId);
-                        priceCommand.Parameters.AddWithValue("$RunnerName", runner.Description?.RunnerName ?? $"Greyhound {runner.SelectionId}");
-                        priceCommand.Parameters.AddWithValue("$Price", bestBackPrice ?? bestLayPrice ?? 0);
-                        priceCommand.Parameters.AddWithValue("$Size", bestBackSize ?? bestLaySize ?? 0);
-                        priceCommand.Parameters.AddWithValue("$Status", runner.Status ?? (object)DBNull.Value);
-                        priceCommand.Parameters.AddWithValue("$LastPriceTraded", runner.LastPriceTraded ?? (object)DBNull.Value);
-                        priceCommand.Parameters.AddWithValue("$TotalMatched", runner.TotalMatched ?? (object)DBNull.Value);
-                        priceCommand.Parameters.AddWithValue("$UpdatedAt", DateTime.UtcNow);
-                        priceCommand.Parameters.AddWithValue("$BestBackPrice", bestBackPrice ?? (object)DBNull.Value);
-                        priceCommand.Parameters.AddWithValue("$BestLayPrice", bestLayPrice ?? (object)DBNull.Value);
-                        priceCommand.Parameters.AddWithValue("$BestBackSize", bestBackSize ?? (object)DBNull.Value);
-                        priceCommand.Parameters.AddWithValue("$BestLaySize", bestLaySize ?? (object)DBNull.Value);
-
-                        await priceCommand.ExecuteNonQueryAsync();
-                        totalOddsRecords++;
-                    }
-                }
-            }
-            
-            await transaction.CommitAsync();
-            
-            _logger.LogInformation("Successfully refreshed {Count} greyhound odds records for market {MarketId} in table {TableName}", totalOddsRecords, marketId, tableName);
-            
-            return totalOddsRecords;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error refreshing greyhound odds for market {MarketId} in table {TableName}", marketId, tableName);
-            return 0;
         }
     }
 }

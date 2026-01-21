@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+using Npgsql;
 using Betfair.Models.Event;
 using Betfair.Models.Market;
 
@@ -12,20 +12,22 @@ public class EventDb2
     }
     public async Task InsertEventTypesAsync(List<EventTypeResult> eventTypes)
     {
-        using var connection = new SqliteConnection(_connectionString);
+        using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync();
 
         foreach (var eventTypeResult in eventTypes)
         {
             using var command = connection.CreateCommand();
             command.CommandText = @"
-                INSERT OR REPLACE INTO EventType (Id, Name, MarketCount)
-                VALUES ($Id, $Name, $MarketCount);
-            ";
+                INSERT INTO eventtype (id, name, marketcount)
+                VALUES (@id, @name, @marketcount)
+                ON CONFLICT (id) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    marketcount = EXCLUDED.marketcount";
 
-            command.Parameters.AddWithValue("$Id", eventTypeResult.EventType.Id);
-            command.Parameters.AddWithValue("$Name", eventTypeResult.EventType.Name);
-            command.Parameters.AddWithValue("$MarketCount", eventTypeResult.MarketCount);
+            command.Parameters.AddWithValue("@id", long.Parse(eventTypeResult.EventType.Id));
+            command.Parameters.AddWithValue("@name", eventTypeResult.EventType.Name);
+            command.Parameters.AddWithValue("@marketcount", eventTypeResult.MarketCount);
 
             await command.ExecuteNonQueryAsync();
         }
@@ -45,9 +47,9 @@ public class EventDb2
         return;
     }
 
-    using var connection = new SqliteConnection(_connectionString);
+    using var connection = new NpgsqlConnection(_connectionString);
     await connection.OpenAsync();
-   //Console.WriteLine($"DEBUG: Opened SQLite connection to {_connectionString}");
+   //Console.WriteLine($"DEBUG: Opened PostgreSQL connection to {_connectionString}");
 
     int insertCount = 0;
     int skippedCount = 0;
@@ -87,14 +89,14 @@ public class EventDb2
 
         using var cmd = connection.CreateCommand();
         cmd.CommandText = @"
-            INSERT OR IGNORE INTO EventMarkets (EventId, MarketId, MarketName, EventName)
-            VALUES ($EventId, $MarketId, $MarketName, $EventName);
-        ";
+            INSERT INTO eventmarkets (eventid, marketid, marketname, eventname)
+            VALUES (@eventid, @marketid, @marketname, @eventname)
+            ON CONFLICT (eventid, marketid) DO NOTHING";
 
-        cmd.Parameters.AddWithValue("$EventId", eventId);
-        cmd.Parameters.AddWithValue("$MarketId", marketId);
-        cmd.Parameters.AddWithValue("$MarketName", marketName);
-        cmd.Parameters.AddWithValue("$EventName", evName);
+        cmd.Parameters.AddWithValue("@eventid", long.Parse(eventId));
+        cmd.Parameters.AddWithValue("@marketid", marketId);
+        cmd.Parameters.AddWithValue("@marketname", marketName);
+        cmd.Parameters.AddWithValue("@eventname", evName);
 
         try
         {
@@ -102,17 +104,17 @@ public class EventDb2
             if (rowsAffected > 0)
             {
                 insertCount++;
-               //Console.WriteLine($"DEBUG: Inserted MarketId {marketId} successfully.");
+                Console.WriteLine($"✅ Inserted EventMarket: {marketId} into EventMarkets");
             }
             else
             {
-               //Console.WriteLine($"DEBUG: MarketId {marketId} insert ignored (likely duplicate).");
+                Console.WriteLine($"⚠️  MarketId {marketId} already exists in EventMarkets (duplicate)");
                 skippedCount++;
             }
         }
         catch (Exception ex)
         {
-           //Console.WriteLine($"ERROR: Exception inserting MarketId {marketId}: {ex.Message}");
+            Console.WriteLine($"❌ Error inserting EventMarket {marketId}: {ex.Message}");
         }
     }
 
@@ -120,28 +122,34 @@ public class EventDb2
 }
     public async Task InsertEventListAsync(List<EventListResult> events, string sport)
     {
-        using var connection = new SqliteConnection(_connectionString);
+        using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync();
 
         foreach (var eventResult in events)
         {
             using var command = connection.CreateCommand();
             command.CommandText = @"
-            INSERT OR REPLACE INTO EventList (
-                Id, Name, CountryCode, Timezone, OpenDate, MarketCount, Sport
+            INSERT INTO eventlist (
+                id, name, countrycode, timezone, opendate, marketcount, sport
             )
             VALUES (
-                $Id, $Name, $CountryCode, $Timezone, $OpenDate, $MarketCount, $Sport
-            );
-        ";
+                @id, @name, @countrycode, @timezone, @opendate, @marketcount, @sport
+            )
+            ON CONFLICT (id) DO UPDATE SET
+                name = EXCLUDED.name,
+                countrycode = EXCLUDED.countrycode,
+                timezone = EXCLUDED.timezone,
+                opendate = EXCLUDED.opendate,
+                marketcount = EXCLUDED.marketcount,
+                sport = EXCLUDED.sport";
 
-            command.Parameters.AddWithValue("$Id", eventResult.Event.Id);
-            command.Parameters.AddWithValue("$Name", eventResult.Event.Name);
-            command.Parameters.AddWithValue("$CountryCode", eventResult.Event.CountryCode ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("$Timezone", eventResult.Event.Timezone ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("$OpenDate", eventResult.Event.OpenDate);
-            command.Parameters.AddWithValue("$MarketCount", eventResult.MarketCount);
-            command.Parameters.AddWithValue("$Sport", sport ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("@id", long.Parse(eventResult.Event.Id));
+            command.Parameters.AddWithValue("@name", eventResult.Event.Name);
+            command.Parameters.AddWithValue("@countrycode", (object?)eventResult.Event.CountryCode ?? DBNull.Value);
+            command.Parameters.AddWithValue("@timezone", (object?)eventResult.Event.Timezone ?? DBNull.Value);
+            command.Parameters.AddWithValue("@opendate", eventResult.Event.OpenDate);
+            command.Parameters.AddWithValue("@marketcount", eventResult.MarketCount);
+            command.Parameters.AddWithValue("@sport", (object?)sport ?? DBNull.Value);
 
             await command.ExecuteNonQueryAsync();
         }
@@ -149,24 +157,23 @@ public class EventDb2
 
     public async Task UpdateEventListWithMarketIdsAsync()
     {
-        using var connection = new SqliteConnection(_connectionString);
+        using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync();
 
         using var command = connection.CreateCommand();
         command.CommandText = @"
-        UPDATE EventList
-        SET MarketId = (
-            SELECT MarketId
-            FROM EventMarkets
-            WHERE EventMarkets.EventId = EventList.Id
+        UPDATE eventlist
+        SET marketid = (
+            SELECT marketid
+            FROM eventmarkets
+            WHERE eventmarkets.eventid = eventlist.id::text
             LIMIT 1
         )
         WHERE EXISTS (
             SELECT 1
-            FROM EventMarkets
-            WHERE EventMarkets.EventId = EventList.Id
-        );
-    ";
+            FROM eventmarkets
+            WHERE eventmarkets.eventid = eventlist.id::text
+        )";
 
         await command.ExecuteNonQueryAsync();
     }

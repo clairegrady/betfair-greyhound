@@ -16,13 +16,11 @@ from typing import Dict, List
 sys.path.insert(0, '/Users/clairegrady/RiderProjects/betfair/utilities')
 from db_connection_helper import get_db_connection, db_transaction, execute_with_retry
 
-DB_PATH = "/Users/clairegrady/RiderProjects/betfair/databases/horses/paper_trades_horses.db"
-BETFAIR_DB = "/Users/clairegrady/RiderProjects/betfair/Betfair/Betfair-Backend/betfairmarket.sqlite"
 BACKEND_URL = "http://localhost:5173"
 
 def get_unsettled_bets():
     """Get all paper LAY bets that haven't been settled yet"""
-    conn = get_db_connection(DB_PATH)
+    conn = get_db_connection('betfair_trades')
     cursor = conn.cursor()
     
     cursor.execute("""
@@ -122,7 +120,7 @@ def get_results_from_db(market_id: str) -> Dict:
 
 def update_bet_result(bet_id: int, result: str, finishing_position: int, pnl: float, bsp: float = None):
     """Update a LAY bet with its result"""
-    conn = get_db_connection(DB_PATH)
+    conn = get_db_connection('betfair_trades')
     cursor = conn.cursor()
     
     cursor.execute("""
@@ -291,7 +289,7 @@ def check_results():
 
 def show_overall_stats():
     """Show overall horse racing LAY betting statistics"""
-    conn = get_db_connection(DB_PATH)
+    conn = get_db_connection('betfair_trades')
     cursor = conn.cursor()
     
     cursor.execute("""
@@ -359,7 +357,7 @@ def show_overall_stats():
 
 def show_daily_stats():
     """Show horse LAY betting statistics broken down by day"""
-    conn = get_db_connection(DB_PATH)
+    conn = get_db_connection('betfair_trades')
     cursor = conn.cursor()
     
     # Check if profit_loss column exists
@@ -420,7 +418,7 @@ def export_to_csv():
     if not os.path.exists(results_dir):
         os.makedirs(results_dir)
     
-    conn = get_db_connection(DB_PATH)
+    conn = get_db_connection('betfair_trades')
     cursor = conn.cursor()
     
     # Change this date to get results for a specific day (format: YYYY-MM-DD)

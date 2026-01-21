@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+using Npgsql;
 using Betfair.Models.Competition;
 
 namespace Betfair.Data;
@@ -11,7 +11,7 @@ public class CompetitionDb
     }
     public async Task InsertCompetitionsIntoDatabase(List<CompetitionResponse> competitionResponses)
     {
-        using var connection = new SqliteConnection(_connectionString);
+        using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync();
 
         foreach (var competitionResponse in competitionResponses)
@@ -19,13 +19,17 @@ public class CompetitionDb
             var competition = competitionResponse.Competition;
             using var command = connection.CreateCommand();
             command.CommandText = @"
-            INSERT OR REPLACE INTO Competition (Id, Name, MarketCount, CompetitionRegion)
-            VALUES ($Id, $Name, $MarketCount, $CompetitionRegion)";
+            INSERT INTO competition (id, name, marketcount, competitionregion)
+            VALUES (@id, @name, @marketcount, @competitionregion)
+            ON CONFLICT (id) DO UPDATE SET 
+                name = EXCLUDED.name,
+                marketcount = EXCLUDED.marketcount,
+                competitionregion = EXCLUDED.competitionregion";
 
-            command.Parameters.AddWithValue("$Id", competition.Id);
-            command.Parameters.AddWithValue("$Name", competition.Name);
-            command.Parameters.AddWithValue("$MarketCount", competitionResponse.MarketCount);
-            command.Parameters.AddWithValue("$CompetitionRegion", competitionResponse.CompetitionRegion);
+            command.Parameters.AddWithValue("@id", competition.Id);
+            command.Parameters.AddWithValue("@name", competition.Name);
+            command.Parameters.AddWithValue("@marketcount", competitionResponse.MarketCount);
+            command.Parameters.AddWithValue("@competitionregion", competitionResponse.CompetitionRegion);
 
             await command.ExecuteNonQueryAsync();
         }

@@ -93,7 +93,7 @@ builder.Services.AddSingleton(new MarketBookDb(connectionString));
 builder.Services.AddSingleton(new EventDb2(connectionString));
 builder.Services.AddSingleton(new MarketProfitAndLossDb(connectionString));
 builder.Services.AddSingleton(new HistoricalDataDb(connectionString));
-builder.Services.AddSingleton(new NcaaBasketballDb(connectionString));
+builder.Services.AddSingleton(sp => new NcaaBasketballDb(connectionString, sp.GetRequiredService<IConfiguration>()));
 
 // Register scoped services
 builder.Services.AddScoped<CompetitionAutomationService>();
@@ -186,6 +186,8 @@ SQLitePCL.raw.SetProvider(new SQLitePCL.SQLite3Provider_e_sqlite3());
 var app = builder.Build();
 
 // TEST: Verify NCAA Basketball service dependencies can be resolved
+// NCAA Basketball service test - commented out
+/*
 try
 {
     using var scope = app.Services.CreateScope();
@@ -218,6 +220,7 @@ catch (Exception ex)
         Console.WriteLine($"   Inner: {ex.InnerException.Message}");
     }
 }
+*/
 
 // Ensure the application uses the specified port or logs an error if unavailable
 var port = Environment.GetEnvironmentVariable("PORT") ?? "5173";

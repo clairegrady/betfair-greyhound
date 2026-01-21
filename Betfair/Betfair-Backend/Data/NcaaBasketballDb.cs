@@ -1,4 +1,5 @@
-using Microsoft.Data.Sqlite;
+using Npgsql;
+using Microsoft.Data.Sqlite;  // Still needed for NCAA paper trades (not migrated yet)
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Betfair.Models.NcaaBasketball;
@@ -10,11 +11,12 @@ public class NcaaBasketballDb
     private readonly string _connectionString;
     private readonly string _ncaaConnectionString;
 
-    public NcaaBasketballDb(string betfairConnectionString)
+    public NcaaBasketballDb(string betfairConnectionString, IConfiguration configuration)
     {
         _connectionString = betfairConnectionString;
-        // NCAA basketball database is in the predictor directory
-        _ncaaConnectionString = "Data Source=/Users/clairegrady/RiderProjects/betfair/ncaa-basketball-predictor/ncaa_basketball.db";
+        // NCAA basketball database now in PostgreSQL
+        _ncaaConnectionString = configuration.GetConnectionString("NcaaDb") 
+            ?? throw new InvalidOperationException("NcaaDb connection string not found");
     }
 
     public async Task<List<NcaaGame>> GetTodaysGamesAsync()
@@ -22,7 +24,7 @@ public class NcaaBasketballDb
         var games = new List<NcaaGame>();
         var today = DateTime.Now.ToString("yyyy-MM-dd");
 
-        await using var connection = new SqliteConnection(_ncaaConnectionString);
+        await using var connection = new NpgsqlConnection(_ncaaConnectionString);
         await connection.OpenAsync();
 
         var command = connection.CreateCommand();
@@ -73,7 +75,7 @@ public class NcaaBasketballDb
         var today = DateTime.Now.ToString("yyyy-MM-dd");
         var endDate = DateTime.Now.AddDays(days).ToString("yyyy-MM-dd");
 
-        await using var connection = new SqliteConnection(_ncaaConnectionString);
+        await using var connection = new NpgsqlConnection(_ncaaConnectionString);
         await connection.OpenAsync();
 
         var command = connection.CreateCommand();
@@ -123,7 +125,7 @@ public class NcaaBasketballDb
 
     public async Task<NcaaTeam?> GetTeamAsync(int teamId)
     {
-        await using var connection = new SqliteConnection(_ncaaConnectionString);
+        await using var connection = new NpgsqlConnection(_ncaaConnectionString);
         await connection.OpenAsync();
 
         var command = connection.CreateCommand();
@@ -155,7 +157,7 @@ public class NcaaBasketballDb
 
     public async Task<KenPomRating?> GetKenPomRatingAsync(int teamId, int season)
     {
-        await using var connection = new SqliteConnection(_ncaaConnectionString);
+        await using var connection = new NpgsqlConnection(_ncaaConnectionString);
         await connection.OpenAsync();
 
         var command = connection.CreateCommand();
@@ -321,7 +323,7 @@ public class NcaaBasketballDb
                 ROI = roi,
                 AvgStake = avgStake,
                 AvgOdds = avgOdds,
-                AvgEdge = avgEdge * 100
+                AvgEdge = avgEdge,
             };
         }
 
@@ -334,7 +336,7 @@ public class NcaaBasketballDb
     {
         var gameDate = gameTime.ToString("yyyy-MM-dd");
         
-        await using var connection = new SqliteConnection(_ncaaConnectionString);
+        await using var connection = new NpgsqlConnection(_ncaaConnectionString);
         await connection.OpenAsync();
 
         var command = connection.CreateCommand();
@@ -387,7 +389,7 @@ public class NcaaBasketballDb
 
     public async Task<NcaaTeam?> GetTeamByNameAsync(string teamName)
     {
-        await using var connection = new SqliteConnection(_ncaaConnectionString);
+        await using var connection = new NpgsqlConnection(_ncaaConnectionString);
         await connection.OpenAsync();
 
         var command = connection.CreateCommand();
@@ -420,7 +422,7 @@ public class NcaaBasketballDb
 
     public async Task<int> InsertTeamAsync(string teamName)
     {
-        await using var connection = new SqliteConnection(_ncaaConnectionString);
+        await using var connection = new NpgsqlConnection(_ncaaConnectionString);
         await connection.OpenAsync();
 
         var command = connection.CreateCommand();
@@ -440,114 +442,64 @@ public class NcaaBasketballDb
         var gameDate = gameTime.ToString("yyyy-MM-dd");
         var season = gameTime.Month >= 11 ? gameTime.Year + 1 : gameTime.Year;
 
-        await using var connection = new SqliteConnection(_ncaaConnectionString);
+        await using var connection = new NpgsqlConnection(_ncaaConnectionString);
         await connection.OpenAsync();
 
         var command = connection.CreateCommand();
         command.CommandText = @"
-            INSERT OR IGNORE INTO games (game_id, game_date, game_time, season, home_team_id, away_team_id, home_team_name, away_team_name, neutral_site)
-            VALUES (@gameId, @gameDate, @gameTime, @season, @homeTeamId, @awayTeamId, @homeTeamName, @awayTeamName, 0)
-        ";
-        command.Parameters.AddWithValue("@gameId", gameId);
-        command.Parameters.AddWithValue("@gameDate", gameDate);
-        // CRITICAL: Format DateTime as ISO8601 string for SQLite
-        command.Parameters.AddWithValue("@gameTime", gameTime.ToString("yyyy-MM-dd HH:mm:ss"));
+            INSERT INTO games (game_id, game_date, game_time, season, home_team_id, away_team_id, home_team_name, away_team_name, neutral_site)
+            VALUES (@gameid, @gamedate, @gametime, @season, @hometeamid, @awayteamid, @hometeamname, @awayteamname, false)
+            ON CONFLICT (game_id) DO NOTHING";
+        
+        command.Parameters.AddWithValue("@gameid", gameId);
+        command.Parameters.AddWithValue("@gamedate", gameDate);
+        command.Parameters.AddWithValue("@gametime", gameTime);
         command.Parameters.AddWithValue("@season", season);
-        command.Parameters.AddWithValue("@homeTeamId", homeTeamId);
-        command.Parameters.AddWithValue("@awayTeamId", awayTeamId);
-        command.Parameters.AddWithValue("@homeTeamName", homeTeamName);
-        command.Parameters.AddWithValue("@awayTeamName", awayTeamName);
+        command.Parameters.AddWithValue("@hometeamid", homeTeamId);
+        command.Parameters.AddWithValue("@awayteamid", awayTeamId);
+        command.Parameters.AddWithValue("@hometeamname", homeTeamName);
+        command.Parameters.AddWithValue("@awayteamname", awayTeamName);
 
         var rowsAffected = await command.ExecuteNonQueryAsync();
-        Console.WriteLine($"💾 INSERT game_id: {gameId}, game_time: {gameTime.ToString("yyyy-MM-dd HH:mm:ss")}, rows: {rowsAffected}");
+        Console.WriteLine($"💾 INSERT game_id: {gameId}, game_time: {gameTime:yyyy-MM-dd HH:mm:ss}, rows: {rowsAffected}");
     }
 
     public async Task UpdateGameTimeAsync(string gameId, DateTime gameTime)
     {
-        await using var connection = new SqliteConnection(_ncaaConnectionString);
+        await using var connection = new NpgsqlConnection(_ncaaConnectionString);
         await connection.OpenAsync();
 
         var command = connection.CreateCommand();
         command.CommandText = @"
             UPDATE games 
-            SET game_time = @gameTime 
-            WHERE game_id = @gameId
-        ";
-        command.Parameters.AddWithValue("@gameId", gameId);
-        // CRITICAL: Format DateTime as ISO8601 string for SQLite
-        command.Parameters.AddWithValue("@gameTime", gameTime.ToString("yyyy-MM-dd HH:mm:ss"));
+            SET game_time = @gametime 
+            WHERE game_id = @gameid";
+        
+        command.Parameters.AddWithValue("@gameid", gameId);
+        command.Parameters.AddWithValue("@gametime", gameTime);
 
         var rowsAffected = await command.ExecuteNonQueryAsync();
-        Console.WriteLine($"DB: UpdateGameTimeAsync game_id: {gameId}, game_time: {gameTime.ToString("yyyy-MM-dd HH:mm:ss")}, rows: {rowsAffected}");
+        Console.WriteLine($"DB: UpdateGameTimeAsync game_id: {gameId}, game_time: {gameTime:yyyy-MM-dd HH:mm:ss}, rows: {rowsAffected}");
     }
 
     public async Task InsertOddsAsync(string gameId, string bookmaker, double homeOdds, double awayOdds, DateTime timestamp)
     {
-        // Retry logic for database lock errors
-        int maxRetries = 5;
-        int retryDelayMs = 100;
-        
-        for (int attempt = 0; attempt < maxRetries; attempt++)
-        {
-            try
-            {
-                // Store odds in the betfair database (not the NCAA predictor database)
-                await using var connection = new SqliteConnection(_connectionString);
-                await connection.OpenAsync();
-                
-                // Enable WAL mode for better concurrency
-                using (var walCommand = connection.CreateCommand())
-                {
-                    walCommand.CommandText = "PRAGMA journal_mode=WAL;";
-                    await walCommand.ExecuteNonQueryAsync();
-                }
+        // Store odds in the betfair database (not the NCAA predictor database)
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync();
 
-                // Set busy timeout to 30 seconds to handle concurrent writes
-                using (var timeoutCommand = connection.CreateCommand())
-                {
-                    timeoutCommand.CommandText = "PRAGMA busy_timeout = 30000;";
-                    await timeoutCommand.ExecuteNonQueryAsync();
-                }
-
-                // Create table if it doesn't exist
-                var createTableCmd = connection.CreateCommand();
-                createTableCmd.CommandText = @"
-            CREATE TABLE IF NOT EXISTS ncaa_basketball_odds (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                game_id TEXT NOT NULL,
-                bookmaker TEXT NOT NULL,
-                home_odds REAL NOT NULL,
-                away_odds REAL NOT NULL,
-                timestamp TEXT NOT NULL
-            )
-        ";
-                await createTableCmd.ExecuteNonQueryAsync();
-
-                var command = connection.CreateCommand();
-                command.CommandText = @"
+        var command = connection.CreateCommand();
+        command.CommandText = @"
             INSERT INTO ncaa_basketball_odds (game_id, bookmaker, home_odds, away_odds, timestamp)
-            VALUES (@gameId, @bookmaker, @homeOdds, @awayOdds, @timestamp)
-        ";
-                command.Parameters.AddWithValue("@gameId", gameId);
-                command.Parameters.AddWithValue("@bookmaker", bookmaker);
-                command.Parameters.AddWithValue("@homeOdds", homeOdds);
-                command.Parameters.AddWithValue("@awayOdds", awayOdds);
-                command.Parameters.AddWithValue("@timestamp", timestamp.ToString("yyyy-MM-dd HH:mm:ss"));
-
-                await command.ExecuteNonQueryAsync();
-                
-                // Success - break out of retry loop
-                return;
-            }
-            catch (SqliteException ex) when (ex.SqliteErrorCode == 5 && attempt < maxRetries - 1) // SQLite BUSY
-            {
-                await Task.Delay(retryDelayMs);
-                retryDelayMs *= 2; // Exponential backoff
-            }
-        }
+            VALUES (@gameid, @bookmaker, @homeodds, @awayodds, @timestamp)";
         
-        // If we get here, all retries failed
-        throw new Exception($"Failed to insert odds for game {gameId} after multiple retries due to database lock");
+        command.Parameters.AddWithValue("@gameid", gameId);
+        command.Parameters.AddWithValue("@bookmaker", bookmaker);
+        command.Parameters.AddWithValue("@homeodds", homeOdds);
+        command.Parameters.AddWithValue("@awayodds", awayOdds);
+        command.Parameters.AddWithValue("@timestamp", timestamp);
+
+        await command.ExecuteNonQueryAsync();
     }
 
     public async Task<int> DeleteOldUpcomingGamesAsync(DateTime beforeDate)
@@ -564,7 +516,7 @@ public class NcaaBasketballDb
         // 3. Have no game_time (indicating they were malformed/test data)
         var veryOldDate = DateTime.Now.AddDays(-7).ToString("yyyy-MM-dd");
         
-        await using var ncaaConnection = new SqliteConnection(_ncaaConnectionString);
+        await using var ncaaConnection = new NpgsqlConnection(_ncaaConnectionString);
         await ncaaConnection.OpenAsync();
         
         var deleteCmd = ncaaConnection.CreateCommand();
@@ -592,7 +544,7 @@ public class NcaaBasketballDb
 
     public async Task<string?> FindBetfairMarketAsync(string homeTeam, string awayTeam)
     {
-        await using var connection = new SqliteConnection(_connectionString);
+        await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync();
 
         // Extract simple team name (first 2 words usually)
@@ -603,12 +555,12 @@ public class NcaaBasketballDb
         command.CommandText = @"
             SELECT MarketId
             FROM MarketCatalogue
-            WHERE CompetitionName LIKE 'NCAA Basketball%'
-            AND (MarketName LIKE '%Moneyline%' OR MarketName LIKE '%Match Odds%')
+            WHERE CompetitionName ILIKE 'NCAA Basketball%'
+            AND (MarketName ILIKE '%Moneyline%' OR MarketName ILIKE '%Match Odds%')
             AND (
-                (EventName LIKE '%' || @home || '%' AND EventName LIKE '%' || @away || '%')
+                (EventName ILIKE '%' || @home || '%' AND EventName ILIKE '%' || @away || '%')
                 OR
-                (EventName LIKE '%' || @homeSimple || '%' AND EventName LIKE '%' || @awaySimple || '%')
+                (EventName ILIKE '%' || @homeSimple || '%' AND EventName ILIKE '%' || @awaySimple || '%')
             )
             ORDER BY OpenDate DESC
             LIMIT 1
@@ -624,7 +576,7 @@ public class NcaaBasketballDb
 
     public async Task<object?> GetMarketBookAsync(string marketId)
     {
-        await using var connection = new SqliteConnection(_connectionString);
+        await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync();
 
         var command = connection.CreateCommand();

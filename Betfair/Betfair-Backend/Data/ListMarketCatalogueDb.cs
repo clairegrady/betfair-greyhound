@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+using Npgsql;
 using Betfair.Models.Market;
 
 namespace Betfair.Data;
@@ -22,24 +22,12 @@ public class ListMarketCatalogueDb
         {
             try
             {
-                using var connection = new SqliteConnection(_connectionString);
+                using var connection = new NpgsqlConnection(_connectionString);
                 await connection.OpenAsync();
                 
-                // Enable WAL mode for better concurrency
-                using (var walCommand = connection.CreateCommand())
-                {
-                    walCommand.CommandText = "PRAGMA journal_mode=WAL;";
-                    await walCommand.ExecuteNonQueryAsync();
-                }
+                // PostgreSQL doesn't need PRAGMA commands
 
-                // Set busy timeout to 30 seconds to handle concurrent writes
-                using (var timeoutCommand = connection.CreateCommand())
-                {
-                    timeoutCommand.CommandText = "PRAGMA busy_timeout = 30000;";
-                    await timeoutCommand.ExecuteNonQueryAsync();
-                }
-
-                foreach (var marketCatalogue in marketCatalogues)
+            foreach (var marketCatalogue in marketCatalogues)
         {
             //Console.WriteLine($"MarketId: {marketCatalogue.MarketId}, MarketName: {marketCatalogue.MarketName}");
 
@@ -59,38 +47,73 @@ public class ListMarketCatalogueDb
 
             using var command = connection.CreateCommand();
             command.CommandText = @"
-                INSERT OR REPLACE INTO MarketCatalogue 
-                (MarketId, MarketName, TotalMatched, EventId, EventName, CountryCode, Timezone, OpenDate, EventTypeId, EventTypeName, CompetitionId, CompetitionName)
+                INSERT INTO marketcatalogue 
+                (marketid, marketname, totalmatched, eventid, eventname, countrycode, timezone, opendate, eventtypeid, eventtypename, competitionid, competitionname)
                 VALUES 
-                ($MarketId, $MarketName, $TotalMatched, $EventId, $EventName, $CountryCode, $Timezone, $OpenDate, $EventTypeId, $EventTypeName, $CompetitionId, $CompetitionName)";
+                (@MarketId, @MarketName, @TotalMatched, @EventId, @EventName, @CountryCode, @Timezone, @OpenDate, @EventTypeId, @EventTypeName, @CompetitionId, @CompetitionName)
+                ON CONFLICT (marketid) DO UPDATE SET
+                    marketname = EXCLUDED.marketname,
+                    totalmatched = EXCLUDED.totalmatched,
+                    eventid = EXCLUDED.eventid,
+                    eventname = EXCLUDED.eventname,
+                    countrycode = EXCLUDED.countrycode,
+                    timezone = EXCLUDED.timezone,
+                    opendate = EXCLUDED.opendate,
+                    eventtypeid = EXCLUDED.eventtypeid,
+                    eventtypename = EXCLUDED.eventtypename,
+                    competitionid = EXCLUDED.competitionid,
+                    competitionname = EXCLUDED.competitionname";
 
-            command.Parameters.AddWithValue("$MarketId", marketCatalogue.MarketId ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("$MarketName", marketCatalogue.MarketName ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("$TotalMatched", marketCatalogue.TotalMatched ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("@MarketId", marketCatalogue.MarketId ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("@MarketName", marketCatalogue.MarketName ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("@TotalMatched", marketCatalogue.TotalMatched ?? (object)DBNull.Value);
 
-            command.Parameters.AddWithValue("$EventId", marketCatalogue.Event?.Id ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("$EventName", marketCatalogue.Event?.Name ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("$CountryCode", marketCatalogue.Event?.CountryCode ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("$Timezone", marketCatalogue.Event?.Timezone ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("$OpenDate", marketCatalogue.Event?.OpenDate.HasValue == true
+            command.Parameters.AddWithValue("@EventId", marketCatalogue.Event?.Id ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("@EventName", marketCatalogue.Event?.Name ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("@CountryCode", marketCatalogue.Event?.CountryCode ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("@Timezone", marketCatalogue.Event?.Timezone ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("@OpenDate", marketCatalogue.Event?.OpenDate.HasValue == true
                 ? (object)marketCatalogue.Event.OpenDate.Value.ToString("yyyy-MM-ddTHH:mm:ssZ")
                 : DBNull.Value);
 
-            command.Parameters.AddWithValue("$EventTypeId", marketCatalogue.EventType?.Id ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("$EventTypeName", marketCatalogue.EventType?.Name ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("@EventTypeId", 
+                marketCatalogue.EventType?.Id != null ? long.Parse(marketCatalogue.EventType.Id) : (object)DBNull.Value);
+            command.Parameters.AddWithValue("@EventTypeName", marketCatalogue.EventType?.Name ?? (object)DBNull.Value);
 
-            command.Parameters.AddWithValue("$CompetitionId", marketCatalogue.Competition?.Id ?? (object)DBNull.Value);
-            command.Parameters.AddWithValue("$CompetitionName", marketCatalogue.Competition?.Name ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("@CompetitionId", marketCatalogue.Competition?.Id ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("@CompetitionName", marketCatalogue.Competition?.Name ?? (object)DBNull.Value);
 
             await command.ExecuteNonQueryAsync();
+            
+            // Store all runners with their names
+            if (marketCatalogue.Runners != null && marketCatalogue.Runners.Any())
+            {
+                foreach (var runner in marketCatalogue.Runners)
+                {
+                    using var runnerCmd = connection.CreateCommand();
+                    runnerCmd.CommandText = @"
+                        INSERT INTO marketcatalogue_runners 
+                        (marketid, selectionid, runnername)
+                        VALUES 
+                        (@MarketId, @SelectionId, @RunnerName)
+                        ON CONFLICT (marketid, selectionid) DO UPDATE SET
+                            runnername = EXCLUDED.runnername";
+                    
+                    runnerCmd.Parameters.AddWithValue("@MarketId", marketCatalogue.MarketId ?? (object)DBNull.Value);
+                    runnerCmd.Parameters.AddWithValue("@SelectionId", runner.SelectionId);
+                    runnerCmd.Parameters.AddWithValue("@RunnerName", runner.RunnerName ?? (object)DBNull.Value);
+                    
+                    await runnerCmd.ExecuteNonQueryAsync();
+                }
+            }
                 }
                 
                 // Success - break out of retry loop
                 return;
             }
-            catch (SqliteException ex) when (ex.SqliteErrorCode == 5 && attempt < maxRetries - 1) // SQLite BUSY
+            catch (Npgsql.PostgresException ex) when (attempt < maxRetries - 1) // PostgreSQL error
             {
-                Console.WriteLine($"⚠️ Database locked (attempt {attempt + 1}/{maxRetries}), retrying in {retryDelayMs}ms...");
+                Console.WriteLine($"⚠️ Database error (attempt {attempt + 1}/{maxRetries}), retrying in {retryDelayMs}ms...");
                 await Task.Delay(retryDelayMs);
                 retryDelayMs *= 2; // Exponential backoff
             }
@@ -102,15 +125,15 @@ public class ListMarketCatalogueDb
     
     public async Task<MarketCatalogue?> GetMarketCatalogueByMarketId(string marketId)
     {
-        using var connection = new SqliteConnection(_connectionString);
+        using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync();
         
         using var command = connection.CreateCommand();
         command.CommandText = @"
-            SELECT MarketId, MarketName, EventName, OpenDate, EventId
-            FROM MarketCatalogue 
-            WHERE MarketId = $MarketId";
-        command.Parameters.AddWithValue("$MarketId", marketId);
+            SELECT marketid, marketname, eventname, opendate, eventid
+            FROM marketcatalogue 
+            WHERE marketid = @MarketId";
+        command.Parameters.AddWithValue("@MarketId", marketId);
         
         using var reader = await command.ExecuteReaderAsync();
         if (!await reader.ReadAsync())

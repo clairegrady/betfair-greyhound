@@ -3,7 +3,7 @@ Check Results for Greyhound LAY Betting Paper Trades
 Updates finishing positions and calculates profit/loss
 """
 
-import sqlite3
+import psycopg2
 import requests
 import json
 import csv
@@ -16,20 +16,18 @@ from typing import Dict, List
 sys.path.insert(0, '/Users/clairegrady/RiderProjects/betfair/utilities')
 from db_connection_helper import get_db_connection, db_transaction, execute_with_retry
 
-DB_PATH = "/Users/clairegrady/RiderProjects/betfair/databases/greyhounds/paper_trades_greyhounds.db"
-BETFAIR_DB = "/Users/clairegrady/RiderProjects/betfair/Betfair/Betfair-Backend/betfairmarket.sqlite"
 BACKEND_URL = "http://localhost:5173"
 
 def get_unsettled_bets():
     """Get all paper LAY bets that haven't been settled yet"""
-    conn = get_db_connection(DB_PATH)
+    conn = get_db_connection('betfair_trades')
     cursor = conn.cursor()
     
     cursor.execute("""
         SELECT 
             id, date, venue, country, race_number, market_id, selection_id, 
             dog_name, box_number, position_in_market, odds, stake, liability, created_at
-        FROM paper_trades
+        FROM paper_trades_greyhounds
         WHERE result = 'pending'
         ORDER BY date DESC, created_at DESC
     """)
@@ -81,15 +79,15 @@ def fetch_settled_results(market_ids: List[str]) -> Dict:
 def get_results_from_db(market_id: str) -> Dict:
     """Fallback: Get results from GreyhoundMarketBook"""
     try:
-        conn = psycopg2.connect(host="localhost", database="betfairmarket", user="clairegrady")
+        conn = get_db_connection('betfairmarket')
         cursor = conn.cursor()
         
         # Get distinct selection IDs and their status/BSP with placing info
         cursor.execute("""
-            SELECT DISTINCT SelectionId, RunnerName, Status, BSP, box, PlacedDate
-            FROM GreyhoundMarketBook
-            WHERE MarketId = ?
-            AND Status IS NOT NULL
+            SELECT DISTINCT selectionid, runnername, status, bsp, box, placeddate
+            FROM greyhoundmarketbook
+            WHERE marketid = %s
+            AND status IS NOT NULL
         """, (market_id,))
         
         results = []
@@ -124,30 +122,34 @@ def get_results_from_db(market_id: str) -> Dict:
 
 def update_bet_result(bet_id: int, result: str, finishing_position: int, pnl: float, bsp: float = None):
     """Update a LAY bet with its result"""
-    conn = get_db_connection(DB_PATH)
+    conn = get_db_connection('betfair_trades')
     cursor = conn.cursor()
     
     cursor.execute("""
-        UPDATE paper_trades
-        SET result = ?, finishing_position = ?, profit_loss = ?, bsp = ?
-        WHERE id = ?
+        UPDATE paper_trades_greyhounds
+        SET result = %s, finishing_position = %s, profit_loss = %s, bsp = %s
+        WHERE id = %s
     """, (result, finishing_position, pnl, bsp, bet_id))
     
     conn.commit()
     conn.close()
 
 def add_profit_loss_column_if_needed():
-    """Add profit_loss column to paper_trades if it doesn't exist"""
-    conn = get_db_connection(DB_PATH)
+    """Add profit_loss column to paper_trades_greyhounds if it doesn't exist"""
+    conn = get_db_connection('betfair_trades')
     cursor = conn.cursor()
     
-    # Check if column exists
-    cursor.execute("PRAGMA table_info(paper_trades)")
-    columns = [col[1] for col in cursor.fetchall()]
+    # Check if column exists in PostgreSQL
+    cursor.execute("""
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'paper_trades_greyhounds' 
+        AND column_name = 'profit_loss'
+    """)
     
-    if 'profit_loss' not in columns:
-        print("   Adding profit_loss column to paper_trades table...")
-        cursor.execute("ALTER TABLE paper_trades ADD COLUMN profit_loss REAL DEFAULT 0")
+    if cursor.fetchone() is None:
+        print("   Adding profit_loss column to paper_trades_greyhounds table...")
+        cursor.execute("ALTER TABLE paper_trades_greyhounds ADD COLUMN profit_loss DOUBLE PRECISION DEFAULT 0")
         conn.commit()
     
     conn.close()
@@ -313,14 +315,18 @@ def check_results():
 
 def show_overall_stats():
     """Show overall greyhound LAY betting statistics"""
-    conn = get_db_connection(DB_PATH)
+    conn = get_db_connection('betfair_trades')
     cursor = conn.cursor()
     
     # Check if profit_loss column exists
-    cursor.execute("PRAGMA table_info(paper_trades)")
-    columns = [col[1] for col in cursor.fetchall()]
+    cursor.execute("""
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'paper_trades_greyhounds' 
+        AND column_name = 'profit_loss'
+    """)
     
-    if 'profit_loss' not in columns:
+    if cursor.fetchone() is None:
         print("\n📊 No settled bets yet (profit_loss column not created)\n")
         conn.close()
         return
@@ -333,7 +339,7 @@ def show_overall_stats():
             SUM(profit_loss) as total_pnl,
             SUM(liability) as total_liability,
             SUM(stake) as total_stake
-        FROM paper_trades
+        FROM paper_trades_greyhounds
         WHERE result != 'pending'
     """)
     
@@ -366,7 +372,7 @@ def show_overall_stats():
             SUM(profit_loss) as pnl,
             SUM(stake) as total_stake,
             SUM(liability) as total_liability
-        FROM paper_trades
+        FROM paper_trades_greyhounds
         WHERE result != 'pending'
         GROUP BY position_in_market
         ORDER BY position_in_market
@@ -390,14 +396,18 @@ def show_overall_stats():
 
 def show_daily_stats():
     """Show greyhound LAY betting statistics broken down by day"""
-    conn = get_db_connection(DB_PATH)
+    conn = get_db_connection('betfair_trades')
     cursor = conn.cursor()
     
     # Check if profit_loss column exists
-    cursor.execute("PRAGMA table_info(paper_trades)")
-    columns = [col[1] for col in cursor.fetchall()]
+    cursor.execute("""
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'paper_trades_greyhounds' 
+        AND column_name = 'profit_loss'
+    """)
     
-    if 'profit_loss' not in columns:
+    if cursor.fetchone() is None:
         conn.close()
         return
     
@@ -412,7 +422,7 @@ def show_daily_stats():
             SUM(profit_loss) as total_pnl,
             SUM(liability) as total_liability,
             SUM(stake) as total_stake
-        FROM paper_trades
+        FROM paper_trades_greyhounds
         GROUP BY date
         ORDER BY date DESC
     """)
@@ -451,10 +461,10 @@ def export_to_csv():
     if not os.path.exists(results_dir):
         os.makedirs(results_dir)
     
-    conn = get_db_connection(DB_PATH)
+    conn = get_db_connection('betfair_trades')
     cursor = conn.cursor()
     
-    date_str = "2026-01-17" #datetime.now().strftime("%Y-%m-%d")
+    date_str = datetime.now().strftime("%Y-%m-%d")
     
     # Export all bets
     print("\n📄 Exporting to CSV files...")
@@ -463,8 +473,8 @@ def export_to_csv():
             id, date, venue, country, race_number, market_id, selection_id,
             dog_name, box_number, position_in_market, odds, stake, liability,
             result, finishing_position, profit_loss, bsp, created_at
-        FROM paper_trades
-        WHERE date = ?
+        FROM paper_trades_greyhounds
+        WHERE date = %s
         ORDER BY created_at DESC
     """, (date_str,))
     
@@ -504,8 +514,8 @@ def export_to_csv():
             SUM(stake) as total_stake,
             SUM(liability) as total_liability,
             SUM(profit_loss) as pnl
-        FROM paper_trades
-        WHERE date = ?
+        FROM paper_trades_greyhounds
+        WHERE date = %s
         GROUP BY position_in_market
         ORDER BY position_in_market
     """, (date_str,))
@@ -546,8 +556,8 @@ def export_to_csv():
             SUM(stake) as total_stake,
             SUM(liability) as total_liability,
             SUM(profit_loss) as total_pnl
-        FROM paper_trades
-        WHERE date = ?
+        FROM paper_trades_greyhounds
+        WHERE date = %s
         GROUP BY date
     """, (date_str,))
     
@@ -588,8 +598,8 @@ def export_to_csv():
             SUM(stake) as total_stake,
             SUM(liability) as total_liability,
             SUM(profit_loss) as pnl
-        FROM paper_trades
-        WHERE date = ?
+        FROM paper_trades_greyhounds
+        WHERE date = %s
         GROUP BY date, position_in_market
         ORDER BY position_in_market
     """, (date_str,))

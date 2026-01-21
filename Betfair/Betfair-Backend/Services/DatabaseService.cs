@@ -2,7 +2,7 @@ using Betfair.Handlers;
 using Betfair.Models;
 using Betfair.Models.Event;
 using Betfair.Models.Market;
-using Microsoft.Data.Sqlite;
+using Npgsql;
 using Dapper;
 
 namespace Betfair.Services;
@@ -18,23 +18,23 @@ public class DatabaseService
 
     public IEnumerable<Event> GetEventList()
     {
-        using var connection = new SqliteConnection(_connectionString);
-        const string query = "SELECT * FROM EventList";
+        using var connection = new NpgsqlConnection(_connectionString);
+        const string query = "SELECT * FROM eventlist";
         return connection.Query<Event>(query);
     }
 
     public IEnumerable<MarketCatalogueDisplayDto> GetMarketCatalogueList()
     {
-        using var connection = new SqliteConnection(_connectionString);
+        using var connection = new NpgsqlConnection(_connectionString);
         const string query = @"
-                SELECT m.MarketId, m.MarketName, m.TotalMatched,
-                       e.Id AS EventId, e.Name AS EventName, e.CountryCode, e.Timezone, e.OpenDate,
-                       et.Id AS EventTypeId, et.Name AS EventTypeName,
-                       c.Id AS CompetitionId, c.Name AS CompetitionName
-                FROM MarketCatalogue m
-                JOIN EventList e ON m.EventId = e.Id
-                JOIN EventType et ON m.EventTypeId = et.Id
-                JOIN Competition c ON m.CompetitionId = c.Id";
+                SELECT m.marketid, m.marketname, m.totalmatched,
+                       e.id AS eventid, e.name AS eventname, e.countrycode, e.timezone, e.opendate,
+                       et.id AS eventtypeid, et.name AS eventtypename,
+                       c.id AS competitionid, c.name AS competitionname
+                FROM marketcatalogue m
+                JOIN eventlist e ON m.eventid = e.id
+                JOIN eventtype et ON m.eventtypeid = et.id
+                JOIN competition c ON m.competitionid = c.id";
 
         return connection
             .Query<MarketCatalogueDisplayDto, EventDisplayDto, EventTypeDisplayDto, CompetitionDisplayDto,
@@ -47,7 +47,7 @@ public class DatabaseService
                     market.Competition = competition;
                     return market;
                 },
-                splitOn: "EventId,EventTypeId,CompetitionId"
+                splitOn: "eventid,eventtypeid,competitionid"
             );
     }
 
@@ -59,7 +59,7 @@ public class DatabaseService
             return;
         }
 
-        using var connection = new SqliteConnection(_connectionString);
+        using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync();
 
         var displayHandler = new DisplayHandler();
@@ -70,30 +70,30 @@ public class DatabaseService
             
             const string query = @"
             SELECT 
-                mc.MarketId, 
-                mc.MarketName, 
-                mc.TotalMatched, 
-                mc.EventName,
-                mbr.Id AS BackPriceId,
-                mbr.SelectionId, 
-                mbr.Status, 
-                mbr.LastPriceTraded,
-                mbr.Price AS BackPrice, 
-                mbr.Size AS BackSize,
-                mbl.Id AS LayPriceId,
-                mbl.Price AS LayPrice, 
-                mbl.Size AS LaySize
+                mc.marketid, 
+                mc.marketname, 
+                mc.totalmatched, 
+                mc.eventname,
+                mbr.id AS backpriceid,
+                mbr.selectionid, 
+                mbr.status, 
+                mbr.lastpricetraded,
+                mbr.price AS backprice, 
+                mbr.size AS backsize,
+                mbl.id AS laypriceid,
+                mbl.price AS layprice, 
+                mbl.size AS laysize
             FROM 
-                MarketBookBackPrices mbr
+                marketbookbackprices mbr
             INNER JOIN 
-                MarketBookLayPrices mbl ON mbr.Id = mbl.Id
+                marketbooklayprices mbl ON mbr.id = mbl.id
             INNER JOIN 
-                MarketCatalogue mc ON mc.MarketId = mbr.MarketId
+                marketcatalogue mc ON mc.marketid = mbr.marketid
             WHERE 
-                mc.MarketId = @MarketId";
+                mc.marketid = @marketid";
 
-            using var command = new SqliteCommand(query, connection);
-            command.Parameters.AddWithValue("@MarketId", marketId);
+            using var command = new NpgsqlCommand(query, connection);
+            command.Parameters.AddWithValue("@marketid", marketId);
 
             using var reader = await command.ExecuteReaderAsync();
             

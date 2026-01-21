@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Betfair.Services;
-using Microsoft.Data.Sqlite;
+using Npgsql;
 
 namespace Betfair.Controllers
 {
@@ -113,7 +113,7 @@ namespace Betfair.Controllers
         {
             try
             {
-                using var connection = new SqliteConnection(_connectionString);
+                using var connection = new NpgsqlConnection(_connectionString);
                 await connection.OpenAsync();
 
                 var query = @"
@@ -122,7 +122,7 @@ namespace Betfair.Controllers
                     WHERE MarketId = @marketId
                     ORDER BY SelectionId";
 
-                using var command = new SqliteCommand(query, connection);
+                using var command = new NpgsqlCommand(query, connection);
                 command.Parameters.AddWithValue("@marketId", marketId);
 
                 using var reader = await command.ExecuteReaderAsync();

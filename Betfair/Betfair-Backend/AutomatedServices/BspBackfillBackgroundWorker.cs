@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Microsoft.Data.Sqlite;
+using Npgsql;
 using System.Net.Http;
 using System.Text;
 using Betfair.Services;
@@ -121,41 +121,33 @@ namespace Betfair.AutomatedServices
 
             try
             {
-                using var connection = new SqliteConnection(_connectionString);
+                using var connection = new NpgsqlConnection(_connectionString);
                 await connection.OpenAsync();
-                
-                // Set busy timeout to 30 seconds to handle concurrent writes
-                using (var timeoutCommand = connection.CreateCommand())
-                {
-                    timeoutCommand.CommandText = "PRAGMA busy_timeout = 30000;";
-                    await timeoutCommand.ExecuteNonQueryAsync();
-                }
 
                 // Get distinct market IDs from last 2 days from both horse and greyhound tables
                 // Only get markets that don't already have BSP in StreamBspProjections
                 var query = @"
-                    SELECT DISTINCT MarketId 
+                    SELECT DISTINCT marketid 
                     FROM (
-                        SELECT DISTINCT MarketId, EventName
-                        FROM HorseMarketBook
-                        WHERE EventName LIKE '%' || strftime('%d', 'now', '-1 day') || '%'
-                           OR EventName LIKE '%' || strftime('%d', 'now', '-2 day') || '%'
+                        SELECT DISTINCT marketid, eventname
+                        FROM horsemarketbook
+                        WHERE eventname ILIKE '%' || TO_CHAR(NOW() - INTERVAL '1 day', 'DD') || '%'
+                           OR eventname ILIKE '%' || TO_CHAR(NOW() - INTERVAL '2 day', 'DD') || '%'
                         
                         UNION
                         
-                        SELECT DISTINCT MarketId, EventName
-                        FROM GreyhoundMarketBook
-                        WHERE EventName LIKE '%' || strftime('%d', 'now', '-1 day') || '%'
-                           OR EventName LIKE '%' || strftime('%d', 'now', '-2 day') || '%'
+                        SELECT DISTINCT marketid, eventname
+                        FROM greyhoundmarketbook
+                        WHERE eventname ILIKE '%' || TO_CHAR(NOW() - INTERVAL '1 day', 'DD') || '%'
+                           OR eventname ILIKE '%' || TO_CHAR(NOW() - INTERVAL '2 day', 'DD') || '%'
+                    ) AS combined
+                    WHERE marketid NOT IN (
+                        SELECT DISTINCT marketid 
+                        FROM streambspprojections
                     )
-                    WHERE MarketId NOT IN (
-                        SELECT DISTINCT MarketId 
-                        FROM StreamBspProjections
-                    )
-                    LIMIT 200
-                ";
+                    LIMIT 200";
 
-                using var command = new SqliteCommand(query, connection);
+                using var command = new NpgsqlCommand(query, connection);
                 using var reader = await command.ExecuteReaderAsync();
 
                 while (await reader.ReadAsync())
@@ -290,15 +282,8 @@ namespace Betfair.AutomatedServices
 
             try
             {
-                using var connection = new SqliteConnection(_connectionString);
+                using var connection = new NpgsqlConnection(_connectionString);
                 await connection.OpenAsync();
-                
-                // Set busy timeout to 30 seconds to handle concurrent writes
-                using (var timeoutCommand = connection.CreateCommand())
-                {
-                    timeoutCommand.CommandText = "PRAGMA busy_timeout = 30000;";
-                    await timeoutCommand.ExecuteNonQueryAsync();
-                }
 
                 foreach (var (marketId, runners) in bspData)
                 {
@@ -308,19 +293,24 @@ namespace Betfair.AutomatedServices
                         var runnerName = await GetRunnerNameAsync(connection, marketId, runner.SelectionId);
 
                         var insertQuery = @"
-                            INSERT OR REPLACE INTO StreamBspProjections 
-                            (MarketId, SelectionId, RunnerName, NearPrice, FarPrice, Average, UpdatedAt)
-                            VALUES (@marketId, @selectionId, @runnerName, @nearPrice, @farPrice, @average, @updatedAt)
-                        ";
+                            INSERT INTO streambspprojections 
+                            (marketid, selectionid, runnername, nearprice, farprice, average, updatedat)
+                            VALUES (@marketid, @selectionid, @runnername, @nearprice, @farprice, @average, @updatedat)
+                            ON CONFLICT (marketid, selectionid) DO UPDATE SET
+                                runnername = EXCLUDED.runnername,
+                                nearprice = EXCLUDED.nearprice,
+                                farprice = EXCLUDED.farprice,
+                                average = EXCLUDED.average,
+                                updatedat = EXCLUDED.updatedat";
 
-                        using var command = new SqliteCommand(insertQuery, connection);
-                        command.Parameters.AddWithValue("@marketId", marketId);
-                        command.Parameters.AddWithValue("@selectionId", runner.SelectionId);
-                        command.Parameters.AddWithValue("@runnerName", runnerName ?? (object)DBNull.Value);
-                        command.Parameters.AddWithValue("@nearPrice", runner.NearPrice ?? (object)DBNull.Value);
-                        command.Parameters.AddWithValue("@farPrice", runner.FarPrice ?? (object)DBNull.Value);
+                        using var command = new NpgsqlCommand(insertQuery, connection);
+                        command.Parameters.AddWithValue("@marketid", marketId);
+                        command.Parameters.AddWithValue("@selectionid", runner.SelectionId);
+                        command.Parameters.AddWithValue("@runnername", (object?)runnerName ?? DBNull.Value);
+                        command.Parameters.AddWithValue("@nearprice", (object?)runner.NearPrice ?? DBNull.Value);
+                        command.Parameters.AddWithValue("@farprice", (object?)runner.FarPrice ?? DBNull.Value);
                         command.Parameters.AddWithValue("@average", runner.Average);
-                        command.Parameters.AddWithValue("@updatedAt", DateTime.UtcNow);
+                        command.Parameters.AddWithValue("@updatedat", DateTime.UtcNow);
 
                         await command.ExecuteNonQueryAsync();
                         savedCount++;
@@ -335,21 +325,20 @@ namespace Betfair.AutomatedServices
             return savedCount;
         }
 
-        private async Task<string?> GetRunnerNameAsync(SqliteConnection connection, string marketId, string selectionId)
+        private async Task<string?> GetRunnerNameAsync(NpgsqlConnection connection, string marketId, string selectionId)
         {
             try
             {
                 // Try HorseMarketBook first
                 var query = @"
-                    SELECT RUNNER_NAME 
-                    FROM HorseMarketBook 
-                    WHERE MarketId = @marketId AND SelectionId = @selectionId 
-                    LIMIT 1
-                ";
+                    SELECT runner_name 
+                    FROM horsemarketbook 
+                    WHERE marketid = @marketid AND selectionid = @selectionid 
+                    LIMIT 1";
 
-                using var command = new SqliteCommand(query, connection);
-                command.Parameters.AddWithValue("@marketId", marketId);
-                command.Parameters.AddWithValue("@selectionId", selectionId);
+                using var command = new NpgsqlCommand(query, connection);
+                command.Parameters.AddWithValue("@marketid", marketId);
+                command.Parameters.AddWithValue("@selectionid", selectionId);
 
                 var result = await command.ExecuteScalarAsync();
                 if (result != null && result != DBNull.Value)
@@ -357,15 +346,14 @@ namespace Betfair.AutomatedServices
 
                 // Try GreyhoundMarketBook
                 query = @"
-                    SELECT RunnerName 
-                    FROM GreyhoundMarketBook 
-                    WHERE MarketId = @marketId AND SelectionId = @selectionId 
-                    LIMIT 1
-                ";
+                    SELECT runnername 
+                    FROM greyhoundmarketbook 
+                    WHERE marketid = @marketid AND selectionid = @selectionid 
+                    LIMIT 1";
 
-                using var command2 = new SqliteCommand(query, connection);
-                command2.Parameters.AddWithValue("@marketId", marketId);
-                command2.Parameters.AddWithValue("@selectionId", selectionId);
+                using var command2 = new NpgsqlCommand(query, connection);
+                command2.Parameters.AddWithValue("@marketid", marketId);
+                command2.Parameters.AddWithValue("@selectionid", selectionId);
 
                 result = await command2.ExecuteScalarAsync();
                 return result?.ToString();

@@ -8,7 +8,6 @@ import sys
 sys.path.insert(0, '/Users/clairegrady/RiderProjects/betfair/utilities')
 
 import pandas as pd
-import sqlite3
 import requests
 import time
 import pytz
@@ -23,8 +22,6 @@ MAX_ODDS = 500
 SECONDS_BEFORE_RACE = 5
 FLAT_STAKE = 10
 
-DB_PATH = "/Users/clairegrady/RiderProjects/betfair/databases/greyhounds/paper_trades_greyhounds.db"
-BETFAIR_DB = "/Users/clairegrady/RiderProjects/betfair/Betfair/Betfair-Backend/betfairmarket.sqlite"
 RACE_TIMES_DB = "/Users/clairegrady/RiderProjects/betfair/databases/shared/race_info.db"
 BACKEND_URL = "http://localhost:5173"
 
@@ -67,12 +64,12 @@ class GreyhoundLayBetting:
         """Get greyhound races within betting window"""
         try:
             # Get races from database (include today and tomorrow for cross-midnight races)
-            conn = sqlite3.connect("/Users/clairegrady/RiderProjects/betfair/databases/shared/race_info.db", timeout=30)
+            conn = get_db_connection("/Users/clairegrady/RiderProjects/betfair/databases/shared/race_info.db")
             query = """
                 SELECT venue, race_number, race_time, race_date, country
                 FROM greyhound_race_times
-                WHERE race_date >= date('now', 'localtime')
-                AND race_date <= date('now', 'localtime', '+1 day')
+                WHERE race_date::date >= CURRENT_DATE
+                AND race_date::date <= CURRENT_DATE + INTERVAL '1 day'
                 ORDER BY race_date, race_time
             """
             df = pd.read_sql(query, conn)
@@ -130,17 +127,17 @@ class GreyhoundLayBetting:
     def find_market_id(self, venue: str, race_number: int) -> Optional[str]:
         """Find Win market ID for this race"""
         try:
-            conn = sqlite3.connect("/Users/clairegrady/RiderProjects/betfair/Betfair/Betfair-Backend/betfairmarket.sqlite", timeout=30)
+            conn = get_db_connection('betfairmarket')
             cursor = conn.cursor()
             
             today_str = datetime.now(pytz.timezone('Australia/Sydney')).strftime("%-d")
             
             query = """
-                SELECT MarketId
-                FROM MarketCatalogue
-                WHERE EventName LIKE ?
-                AND MarketName LIKE ?
-                AND EventTypeName = 'Greyhound Racing'
+                SELECT marketid
+                FROM marketcatalogue
+                WHERE eventname ILIKE %s
+                AND marketname ILIKE %s
+                AND eventtypename = 'Greyhound Racing'
                 LIMIT 1
             """
             
@@ -161,17 +158,19 @@ class GreyhoundLayBetting:
     def get_odds_from_db(self, market_id: str) -> Optional[Dict]:
         """Fallback: Get odds directly from GreyhoundMarketBook table"""
         try:
-            conn = sqlite3.connect("/Users/clairegrady/RiderProjects/betfair/Betfair/Betfair-Backend/betfairmarket.sqlite", timeout=30)
+            conn = get_db_connection('betfairmarket')
             cursor = conn.cursor()
             
-            # Get all back odds for this market - include box number
+            # FOR LAY BETTING: Get ONLY LAY odds for this market
+            # NO FALLBACK TO BACK PRICES
             query = """
-                SELECT DISTINCT selectionid, price, RunnerName, box
-                FROM GreyhoundMarketBook
-                WHERE MarketId = ?
-                AND priceType = 'AvailableToBack'
+                SELECT DISTINCT selectionid, price, runnername, box
+                FROM greyhoundmarketbook
+                WHERE marketid = %s
+                AND pricetype = 'AvailableToLay'
                 AND price IS NOT NULL
-                ORDER BY selectionid, price DESC
+                AND price > 0
+                ORDER BY selectionid, price ASC
             """
             
             cursor.execute(query, (market_id,))
@@ -179,14 +178,15 @@ class GreyhoundLayBetting:
             conn.close()
             
             if not results:
+                logger.warning(f"❌ No lay prices in DB for market {market_id}")
                 return None
             
-            # Group by selectionid and take best (highest) back price
+            # Group by selectionid and take best (lowest) lay price
             import re
             runners_dict = {}
+            
             for sel_id, price, runner_name, box in results:
                 if sel_id not in runners_dict:
-                    # Clean trap number from name
                     clean_name = re.sub(r'^\d+\.\s*', '', runner_name) if runner_name else f'Dog {sel_id}'
                     runners_dict[sel_id] = {
                         'selection_id': sel_id,
@@ -213,58 +213,66 @@ class GreyhoundLayBetting:
                 return self.get_odds_from_db(market_id)
             
             data = response.json()
-            runners = data.get('runners', [])
+            # The API returns 'odds' not 'runners'
+            odds_data = data.get('odds', [])
             
-            # GreyhoundMarketBook API now returns runner names and box numbers directly
-            runner_names = {}
-            box_numbers = {}
-            for runner in runners:
-                sel_id = runner.get('selectionId')
-                if sel_id:
-                    name = runner.get('runnerName', '')
-                    box = runner.get('box')
-                    if name and not name.startswith('Runner '):
-                        runner_names[sel_id] = name
-                    if box:
-                        box_numbers[sel_id] = box
+            if not odds_data:
+                logger.warning(f"❌ No odds data returned from API for market {market_id}")
+                return self.get_odds_from_db(market_id)
             
-            # Fallback: Get names and box numbers from GreyhoundMarketBook table if needed
-            conn = sqlite3.connect("/Users/clairegrady/RiderProjects/betfair/Betfair/Betfair-Backend/betfairmarket.sqlite", timeout=30)
+            # Get runner names from database
+            conn = get_db_connection('betfairmarket')
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT DISTINCT selectionid, RunnerName, box
-                FROM GreyhoundMarketBook
-                WHERE MarketId = ?
+                SELECT DISTINCT selectionid, runnername, box
+                FROM greyhoundmarketbook
+                WHERE marketid = %s
             """, (market_id,))
             
             import re
+            runner_names = {}
             box_numbers = {}
             for sel_id, runner_name, box in cursor.fetchall():
-                if runner_name and sel_id not in runner_names:
+                if runner_name:
                     clean_name = re.sub(r'^\d+\.\s*', '', runner_name)
                     runner_names[sel_id] = clean_name
                 if box:
                     box_numbers[sel_id] = box
             conn.close()
             
-            # Build odds map
-            odds_map = []
-            for runner in runners:
-                selection_id = runner.get('selectionId')
-                ex = runner.get('ex', {})
-                available_to_back = ex.get('availableToBack', [])
-                
-                if available_to_back and len(available_to_back) > 0:
-                    odds = available_to_back[0].get('price')
-                    if odds and selection_id:
-                        odds_map.append({
-                            'selection_id': selection_id,
-                            'odds': odds,
-                            'dog_name': runner_names.get(selection_id, f'Dog {selection_id}'),
-                            'box': box_numbers.get(selection_id)
-                        })
+            # Build odds map from the 'odds' array, grouping by selectionid
+            # FOR LAY BETTING: Use the best (lowest) lay price available
+            # NO FALLBACK TO BACK PRICES - if no lay prices, skip this market
+            selection_lay_odds = {}
             
-            return {'runners': odds_map} if odds_map else None
+            for odd in odds_data:
+                sel_id = odd.get('selectionid')
+                price = odd.get('price')
+                pricetype = odd.get('pricetype')
+                
+                if sel_id and price and price > 0 and pricetype == 'AvailableToLay':
+                    # For lay betting, take the LOWEST lay price (best price to lay at)
+                    if sel_id not in selection_lay_odds or price < selection_lay_odds[sel_id]:
+                        selection_lay_odds[sel_id] = price
+            
+            # Only proceed if we have lay prices
+            if not selection_lay_odds:
+                logger.warning(f"❌ No lay prices available for market {market_id} - skipping")
+                return None
+            
+            selection_odds = selection_lay_odds
+            
+            # Build final odds map
+            odds_map = []
+            for sel_id, odds in selection_odds.items():
+                odds_map.append({
+                    'selection_id': sel_id,
+                    'odds': odds,
+                    'dog_name': runner_names.get(sel_id, f'Dog {sel_id}'),
+                    'box': box_numbers.get(sel_id)
+                })
+            
+            return {'runners': odds_map}
             
         except Exception as e:
             logger.warning(f"API error: {e}, trying DB fallback")
@@ -276,10 +284,10 @@ class GreyhoundLayBetting:
             # Get total matched from MarketCatalogue
             total_matched = None
             try:
-                betfair_conn = sqlite3.connect("/Users/clairegrady/RiderProjects/betfair/Betfair/Betfair-Backend/betfairmarket.sqlite", timeout=30)
+                betfair_conn = get_db_connection('betfairmarket')
                 betfair_cursor = betfair_conn.cursor()
                 betfair_cursor.execute("""
-                    SELECT TotalMatched FROM MarketCatalogue WHERE MarketId = ?
+                    SELECT totalmatched FROM marketcatalogue WHERE marketid = %s
                 """, (race_info['market_id'],))
                 result = betfair_cursor.fetchone()
                 if result:
@@ -288,16 +296,16 @@ class GreyhoundLayBetting:
             except Exception as e:
                 logger.debug(f"Could not fetch TotalMatched: {e}")
             
-            conn = get_db_connection(DB_PATH)
+            conn = get_db_connection('betfair_trades')
             cursor = conn.cursor()
             
             liability = FLAT_STAKE * (dog['odds'] - 1)
             
             cursor.execute("""
-                INSERT INTO paper_trades
+                INSERT INTO paper_trades_greyhounds
                 (date, venue, country, race_number, market_id, selection_id, dog_name, box_number,
-                 position_in_market, odds, stake, liability, finishing_position, result, total_matched)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 position_in_market, odds, stake, liability, finishing_position, result, total_matched, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 datetime.now().strftime('%Y-%m-%d'),
                 race_info['venue'],
@@ -313,7 +321,8 @@ class GreyhoundLayBetting:
                 liability,
                 0,  # Will be updated later
                 'pending',
-                total_matched
+                total_matched,
+                datetime.now()  # created_at timestamp
             ))
             
             conn.commit()
@@ -381,6 +390,7 @@ class GreyhoundLayBetting:
     
     def run(self):
         self.logged_initial_races = False
+        self.last_next_race_info = None  # Track last logged race info
         """Main monitoring loop"""
         logger.info("=" * 70)
         logger.info(f"🐕 GREYHOUND LAY BETTING - POSITION {POSITION_TO_LAY}")
@@ -396,17 +406,46 @@ class GreyhoundLayBetting:
                 loop_count += 1
                 upcoming = self.get_upcoming_races()
                 
-                if loop_count % 360 == 1:  # Log every 30 minutes
-                    logger.info(f"🔍 Checking... Found {len(upcoming)} races in betting window")
+                # Show next race info every 5 seconds (but only if it changes)
+                if upcoming:
+                    next_race = upcoming[0]
+                    
+                    # Calculate time until race (use the race_datetime that's already in the dict)
+                    now = datetime.now(pytz.timezone('Australia/Sydney'))
+                    race_datetime = next_race['race_datetime']
+                    time_until = race_datetime - now
+                    
+                    minutes = int(time_until.total_seconds() // 60)
+                    seconds = int(time_until.total_seconds() % 60)
+                    
+                    current_info = f"{next_race['venue']} R{next_race['race_number']} - {minutes}m {seconds}s"
+                    
+                    # Only log if the info changed
+                    if current_info != self.last_next_race_info:
+                        logger.info(f"⏱️  Next race: {current_info}")
+                        self.last_next_race_info = current_info
                 
+                # Group races by venue to ensure we only bet on the next race at each venue
+                venue_races = {}
                 for race in upcoming:
-                    market_id = race['market_id']
+                    venue = race['venue']
+                    if venue not in venue_races:
+                        venue_races[venue] = []
+                    venue_races[venue].append(race)
+                
+                # For each venue, only process the race with the lowest race number
+                for venue, races in venue_races.items():
+                    # Sort by race number to get the earliest race
+                    races_sorted = sorted(races, key=lambda x: x['race_number'])
+                    next_race = races_sorted[0]
+                    
+                    market_id = next_race['market_id']
                     
                     if market_id in self.processed_markets:
                         continue
                     
                     self.processed_markets.add(market_id)
-                    self.process_race(race)
+                    self.process_race(next_race)
                 
                 time.sleep(5)  # Check every 5 seconds
                 
